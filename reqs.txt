@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+git+https://github.com/openai/whisper.git
+transformers
+ffmpeg-python
+torch
+python-dotenv
+python-multipart
