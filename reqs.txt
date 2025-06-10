@@ -9,3 +9,5 @@ python-multipart
 protobuf
 opencv-python
 tensorflow
+tf-keras
+requests

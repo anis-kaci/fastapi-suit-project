@@ -7,8 +7,15 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
+# NEW: Import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
+
+# Imports for Sentiment Analysis
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+import torch
+
 
 # --- Pydantic Models for API Responses ---
 class TranscriptionResult(BaseModel):
@@ -19,10 +26,9 @@ class EmotionDetection(BaseModel):
     emotion: str
     confidence: float
 
-class FacialAnalysisResult(BaseModel):
+class FacialAnalysisResult(BaseModel): # Changed to BaseModel
     facial_emotions: list[EmotionDetection]
 
-# New Pydantic models for video analysis
 class FrameEmotionDetail(BaseModel):
     timestamp_seconds: int
     detected_faces: list[EmotionDetection]
@@ -32,16 +38,43 @@ class VideoAnalysisResult(BaseModel):
     frames_analyzed: int
     emotions_timeline: list[FrameEmotionDetail]
 
+class SentimentAnalysisResult(BaseModel):
+    overall_sentiment: str
+    confidence_score: float
+    raw_scores: dict
+
+# NEW Pydantic model for combined interview analysis result
+class InterviewAnalysisResult(BaseModel):
+    transcription: TranscriptionResult
+    video_emotions: VideoAnalysisResult
+    overall_text_sentiment: SentimentAnalysisResult
+
 
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="Multimodal Chatbot API",
-    description="API for audio transcription and facial emotion detection from images/videos.",
+    description="API for audio transcription, facial emotion detection from images/videos, and text sentiment analysis.",
     version="1.0.0",
 )
 
+# NEW: Add CORS Middleware
+# This allows requests from any origin to your API.
+# In a production environment, you would restrict 'allow_origins' to specific domains.
+origins = [
+    "*" # Allows all origins for local development
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Allows all HTTP methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"], # Allows all headers
+)
 
 # --- Global Model Loading (for performance) ---
+
+# ... (rest of your main.py code remains the same) ...
 
 # Whisper Model (loaded on demand for 'base' model, as it's efficient enough)
 WHISPER_MODEL = "base"
@@ -64,20 +97,45 @@ except Exception as e:
     EMOTION_MODEL = None
     FACE_DETECTOR = None
 
-# Define emotion labels and input size globally, based on your model
+# Define facial emotion labels and input size globally, based on your model
 EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
 MODEL_INPUT_SIZE = (96, 96) # Height, Width
+
+
+# --- Sentiment Analysis Model (Pre-trained from Hugging Face Hub) ---
+SENTIMENT_MODEL_ID = "cardiffnlp/twitter-roberta-base-sentiment-latest" 
+
+sentiment_pipeline = None
+SENTIMENT_LABELS = [] # Will be populated upon successful model load
+
+try:
+    sentiment_pipeline = pipeline("sentiment-analysis", model=SENTIMENT_MODEL_ID, tokenizer=SENTIMENT_MODEL_ID)
+    
+    if hasattr(sentiment_pipeline.model.config, 'id2label'):
+        label_map = sorted(sentiment_pipeline.model.config.id2label.items(), key=lambda x: int(x[0]))
+        SENTIMENT_LABELS = [label for _, label in label_map]
+    else:
+        SENTIMENT_LABELS = ["negative", "neutral", "positive"] 
+        print(f"WARNING: Could not auto-detect sentiment labels from model config. Using default: {SENTIMENT_LABELS}")
+    
+    print(f"Loaded sentiment model from Hugging Face Hub: {SENTIMENT_MODEL_ID} with labels: {SENTIMENT_LABELS}")
+
+except Exception as e:
+    print(f"Error loading sentiment model from Hugging Face Hub ({SENTIMENT_MODEL_ID}): {e}. "
+          "Ensure 'transformers' is installed and your internet connection is active for initial download.")
+    sentiment_pipeline = None
+    SENTIMENT_LABELS = []
 
 
 # --- Helper Functions ---
 
 async def transcribe_audio_with_whisper(audio_file_path: str) -> str:
     """
-    Transcribes an audio file using the local Whisper model.
+    Transcribes an audio file (or audio track from a video) using the local Whisper model.
     """
     try:
         model = whisper.load_model(WHISPER_MODEL)
-        result = model.transcribe(audio_file_path)
+        result = model.transcribe(audio_file_path) # Whisper can handle video files to extract audio
         return result["text"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Whisper transcription failed: {e}. Ensure FFmpeg is installed and in PATH.")
@@ -102,27 +160,25 @@ async def analyze_facial_emotions(image_bytes: bytes) -> list[EmotionDetection]:
         raise HTTPException(status_code=500, detail="Facial emotion model or detector not loaded. Check server logs.")
 
     try:
-        # Convert bytes to NumPy array and then to OpenCV image
         np_image = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_image, cv2.IMREAD_COLOR) # Ensure image is loaded as color
+        img = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
 
         if img is None:
             raise HTTPException(status_code=400, detail="Could not decode image file.")
 
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # Keep original RGB for cropping
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         faces = FACE_DETECTOR.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
         detected_emotions = []
         if len(faces) == 0:
-            return [] # Return empty list if no faces are detected
+            return []
 
         for (x, y, w, h) in faces:
-            # Crop the face from the *RGB* image
             face_rgb_roi = rgb_img[y:y+h, x:x+w]
 
-            if face_rgb_roi.size == 0: # Check for empty ROI in case of bad crop
+            if face_rgb_roi.size == 0:
                 continue
 
             try:
@@ -166,21 +222,19 @@ async def process_video_for_emotions(video_file_path: str) -> VideoAnalysisResul
     emotions_timeline = []
     frames_processed = 0
 
-    # Iterate through each second of the video, processing one frame per second
-    for sec in range(video_duration_seconds + 1): # Include the last partial second if any
-        # Set video position to the start of the current second
+    for sec in range(video_duration_seconds + 1):
         cap.set(cv2.CAP_PROP_POS_MSEC, sec * 1000)
-        ret, frame = cap.read() # Read the frame
+        ret, frame = cap.read()
 
-        if not ret: # If frame not read, skip or break
-            if sec < video_duration_seconds: # Only print warning if not the very end
+        if not ret:
+            if sec < video_duration_seconds:
                  print(f"Warning: Could not read frame at {sec} seconds. Skipping.")
             continue
 
         frames_processed += 1
 
         gray_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        rgb_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # Convert to RGB for model input
+        rgb_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         faces = FACE_DETECTOR.detectMultiScale(gray_img, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
@@ -189,7 +243,7 @@ async def process_video_for_emotions(video_file_path: str) -> VideoAnalysisResul
             for (x, y, w, h) in faces:
                 face_rgb_roi = rgb_img[y:y+h, x:x+w]
 
-                if face_rgb_roi.size == 0: # Check for empty ROI in case of bad crop
+                if face_rgb_roi.size == 0:
                     continue
 
                 try:
@@ -220,6 +274,48 @@ async def process_video_for_emotions(video_file_path: str) -> VideoAnalysisResul
         frames_analyzed=frames_processed,
         emotions_timeline=emotions_timeline
     )
+
+
+async def analyze_sentiment_with_hf_pipeline(text: str) -> SentimentAnalysisResult:
+    """
+    Analyzes sentiment of text using the locally loaded Hugging Face pipeline.
+    """
+    if sentiment_pipeline is None or not SENTIMENT_LABELS:
+        raise HTTPException(status_code=500, detail="Sentiment analysis pipeline not loaded or labels not defined. Check server logs.")
+
+    try:
+        result = sentiment_pipeline(text)
+        
+        main_prediction = result[0]
+        predicted_label = main_prediction['label']
+        confidence_score = main_prediction['score']
+
+        raw_scores = {}
+        inputs = sentiment_pipeline.tokenizer(text, return_tensors="pt", truncation=True)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        sentiment_pipeline.model.to(device)
+
+        with torch.no_grad():
+            outputs = sentiment_pipeline.model(**inputs)
+        probabilities = torch.softmax(outputs.logits, dim=1)[0]
+        
+        for i, prob in enumerate(probabilities):
+            if i < len(SENTIMENT_LABELS):
+                raw_scores[SENTIMENT_LABELS[i]] = prob.item()
+            else:
+                raw_scores[f"LABEL_{i}"] = prob.item()
+
+
+        return SentimentAnalysisResult(
+            overall_sentiment=predicted_label,
+            confidence_score=confidence_score,
+            raw_scores=raw_scores
+        )
+
+    except Exception as e:
+        print(f"Detailed sentiment analysis error: {e}")
+        raise HTTPException(status_code=500, detail=f"Sentiment analysis failed: {e}")
 
 
 # --- API Endpoints ---
@@ -258,7 +354,7 @@ async def analyze_face(image: UploadFile = File(..., description="Image file to 
     facial_emotions = await analyze_facial_emotions(image_bytes)
 
     if not facial_emotions:
-        return FacialAnalysisResult(facial_emotions=[]) # Return empty if no faces detected
+        return FacialAnalysisResult(facial_emotions=[])
     
     return FacialAnalysisResult(facial_emotions=facial_emotions)
 
@@ -272,7 +368,6 @@ async def analyze_video_emotions(video: UploadFile = File(..., description="Vide
     if not video.content_type or not video.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="Invalid file type. Only video files are supported (e.g., MP4, MOV, AVI).")
 
-    # Save the uploaded video file to a temporary location
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{video.filename.split('.')[-1]}") as temp_video_file:
         content = await video.read()
         temp_video_file.write(content)
@@ -284,6 +379,72 @@ async def analyze_video_emotions(video: UploadFile = File(..., description="Vide
     finally:
         if os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
+
+# --- Sentiment Analysis (Text) Endpoint ---
+@app.post("/analyze-text-sentiment", response_model=SentimentAnalysisResult, summary="Analyze Sentiment of Text")
+async def analyze_text_sentiment(text: str = Form(..., description="Text string to analyze sentiment for")):
+    """
+    Analyzes the sentiment of provided text using a pre-trained model from Hugging Face Hub.
+    Returns the overall sentiment, its confidence score, and raw scores for all possible labels.
+    """
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided for sentiment analysis.")
+    
+    sentiment_result = await analyze_sentiment_with_hf_pipeline(text)
+    return sentiment_result
+
+# --- NEW: Analyze Interview Video Endpoint ---
+@app.post("/analyze-interview-video", response_model=InterviewAnalysisResult, summary="Analyze a full interview video (Audio + Facial + Text Sentiment)")
+async def analyze_interview_video(video: UploadFile = File(..., description="Interview video file for comprehensive analysis. This process can be very time-consuming.")):
+    """
+    Processes an uploaded interview video to perform:
+    1. Audio transcription using Whisper.
+    2. Facial emotion analysis frame-by-frame.
+    3. Sentiment analysis of the transcribed text.
+    Combines all results into a single comprehensive response.
+    """
+    if not video.content_type or not video.content_type.startswith("video/"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only video files are supported (e.g., MP4, MOV, AVI).")
+
+    # Save the uploaded video file to a temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{video.filename.split('.')[-1]}") as temp_video_file:
+        content = await video.read()
+        temp_video_file.write(content)
+        temp_file_path = temp_video_file.name
+
+    try:
+        # Step 1: Perform Audio Transcription
+        # Whisper can extract audio directly from video files via FFmpeg
+        transcription_text = await transcribe_audio_with_whisper(temp_file_path)
+        transcription_result = TranscriptionResult(text=transcription_text)
+        print(f"Transcription complete: {transcription_text[:50]}...") # Log first 50 chars
+
+        # Step 2: Perform Facial Analysis from Video
+        video_emotions_result = await process_video_for_emotions(temp_file_path)
+        print(f"Facial analysis complete for {video_emotions_result.frames_analyzed} frames.")
+
+        # Step 3: Analyze Sentiment of the Transcribed Text
+        overall_text_sentiment_result = await analyze_sentiment_with_hf_pipeline(transcription_text)
+        print(f"Text sentiment analysis complete: {overall_text_sentiment_result.overall_sentiment}")
+
+        return InterviewAnalysisResult(
+            transcription=transcription_result,
+            video_emotions=video_emotions_result,
+            overall_text_sentiment=overall_text_sentiment_result
+        )
+    except HTTPException as e:
+        # Re-raise HTTPExceptions from helper functions directly
+        raise e
+    except Exception as e:
+        # Catch any other unexpected errors during orchestration
+        print(f"Error during full interview video analysis for {video.filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to analyze interview video: {e}")
+    finally:
+        # Clean up the temporary video file
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+            print(f"Cleaned up temporary video file: {temp_file_path}")
+
 
 # --- Root Endpoint for API testing ---
 @app.get("/")
