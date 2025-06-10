@@ -11,3 +11,4 @@ opencv-python
 tensorflow
 tf-keras
 requests
+websockets

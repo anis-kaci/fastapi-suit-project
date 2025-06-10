@@ -7,10 +7,10 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-# NEW: Import CORSMiddleware
 from fastapi.middleware.cors import CORSMiddleware
+import json # Import json for WebSocket communication
 
 # Imports for Sentiment Analysis
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
@@ -26,7 +26,7 @@ class EmotionDetection(BaseModel):
     emotion: str
     confidence: float
 
-class FacialAnalysisResult(BaseModel): # Changed to BaseModel
+class FacialAnalysisResult(BaseModel):
     facial_emotions: list[EmotionDetection]
 
 class FrameEmotionDetail(BaseModel):
@@ -43,7 +43,6 @@ class SentimentAnalysisResult(BaseModel):
     confidence_score: float
     raw_scores: dict
 
-# NEW Pydantic model for combined interview analysis result
 class InterviewAnalysisResult(BaseModel):
     transcription: TranscriptionResult
     video_emotions: VideoAnalysisResult
@@ -57,9 +56,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# NEW: Add CORS Middleware
-# This allows requests from any origin to your API.
-# In a production environment, you would restrict 'allow_origins' to specific domains.
 origins = [
     "*" # Allows all origins for local development
 ]
@@ -68,13 +64,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"], # Allows all HTTP methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"], # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Global Model Loading (for performance) ---
-
-# ... (rest of your main.py code remains the same) ...
 
 # Whisper Model (loaded on demand for 'base' model, as it's efficient enough)
 WHISPER_MODEL = "base"
@@ -157,14 +151,18 @@ async def analyze_facial_emotions(image_bytes: bytes) -> list[EmotionDetection]:
     Analyzes facial emotions from a single image's bytes.
     """
     if EMOTION_MODEL is None or FACE_DETECTOR is None:
-        raise HTTPException(status_code=500, detail="Facial emotion model or detector not loaded. Check server logs.")
+        # In a WebSocket context, consider sending an error message back instead of raising HTTPException directly
+        # For simplicity in this example, we'll let it raise, which will cause the WebSocket to disconnect.
+        print("Facial emotion model or detector not loaded. Cannot perform analysis.")
+        return []
 
     try:
         np_image = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
 
         if img is None:
-            raise HTTPException(status_code=400, detail="Could not decode image file.")
+            print("Could not decode image file.")
+            return []
 
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -201,7 +199,8 @@ async def analyze_facial_emotions(image_bytes: bytes) -> list[EmotionDetection]:
         return detected_emotions
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Facial analysis internal error: {e}")
+        print(f"Facial analysis internal error: {e}")
+        return []
 
 
 async def process_video_for_emotions(video_file_path: str) -> VideoAnalysisResult:
@@ -228,7 +227,7 @@ async def process_video_for_emotions(video_file_path: str) -> VideoAnalysisResul
 
         if not ret:
             if sec < video_duration_seconds:
-                 print(f"Warning: Could not read frame at {sec} seconds. Skipping.")
+                print(f"Warning: Could not read frame at {sec} seconds. Skipping.")
             continue
 
         frames_processed += 1
@@ -444,6 +443,37 @@ async def analyze_interview_video(video: UploadFile = File(..., description="Int
         if os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
             print(f"Cleaned up temporary video file: {temp_file_path}")
+
+# --- NEW: WebSocket Endpoint for Real-time Webcam Analysis ---
+@app.websocket("/ws/analyze-webcam")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("WebSocket connection established for real-time webcam analysis.")
+    try:
+        while True:
+            # Receive binary data (image frame) from the client
+            image_bytes = await websocket.receive_bytes()
+            
+            # Perform facial emotion analysis on the received frame
+            detected_faces = await analyze_facial_emotions(image_bytes)
+
+            # Prepare the response data. You can expand this to include other real-time metrics
+            # like speech rate, gaze, etc., if you implement them.
+            response_data = {
+                "facial_emotions": [face.model_dump() for face in detected_faces] # Convert Pydantic models to dicts
+            }
+            
+            # Send the analysis result back to the client as JSON
+            await websocket.send_json(response_data)
+
+    except WebSocketDisconnect:
+        print("WebSocket disconnected from client.")
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        # Optionally send an error message to the client before closing
+        await websocket.send_json({"error": str(e), "message": "An error occurred during real-time analysis."})
+    finally:
+        print("WebSocket connection closed.")
 
 
 # --- Root Endpoint for API testing ---
