@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SUIT - Smart Universal Intelligence Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .tabs {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 8px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab.active {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th,
+        .result-table td {
+            padding: 8px;
+            text-align: center;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .upload-text {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .upload-subtext {
+            font-size: 14px;
+            color: #999;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .text-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 20px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            font-size: 16px;
+            resize: vertical;
+            margin-bottom: 20px;
+            font-family: inherit;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9ff;
+            border-radius: 15px;
+            border-left: 5px solid #667eea;
+        }
+
+        .results h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .results pre {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            border-left: 5px solid #e74c3c;
+            color: #c0392b;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .api-config {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        .api-config label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .api-config input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .api-config input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .tabs {
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .content {
+                padding: 25px;
+            }
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1em;
+        }
+
+        .result-table th, .result-table td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .result-table th {
+            background-color: #f5f5f5;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SUIT</h1>
+            <p>Smart Universal Intelligence Tool</p>
+        </div>
+
+        <div class="api-config">
+            <label for="apiUrl">API Base URL:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('transcribe')">🎵 Audio Transcription</button>
+            <button class="tab" onclick="switchTab('face')">😊 Face Analysis</button>
+            <button class="tab" onclick="switchTab('video')">🎬 Video Analysis</button>
+            <button class="tab" onclick="switchTab('sentiment')">💭 Sentiment Analysis</button>
+        </div>
+
+        <div class="content">
+            <!-- Audio Transcription Tab -->
+            <div class="tab-content active" id="transcribe">
+                <div class="upload-area" onclick="document.getElementById('audioFile').click()">
+                    <div class="upload-icon">🎵</div>
+                    <div class="upload-text">Drop your audio file here or click to browse</div>
+                    <div class="upload-subtext">Supported: MP3, WAV, M4A, etc.</div>
+                </div>
+                <input type="file" id="audioFile" class="file-input" accept="audio/*">
+                <button class="btn" onclick="transcribeAudio()">
+                    <span>🎯</span> Transcribe Audio
+                </button>
+                <div class="loading" id="transcribeLoading">
+                    <div class="spinner"></div>
+                    <p>Transcribing audio...</p>
+                </div>
+                <div id="transcribeResults"></div>
+            </div>
+
+            <!-- Face Analysis Tab -->
+            <div class="tab-content" id="face">
+                <div class="upload-area" onclick="document.getElementById('imageFile').click()">
+                    <div class="upload-icon">😊</div>
+                    <div class="upload-text">Drop your image here or click to browse</div>
+                    <div class="upload-subtext">Supported: JPG, PNG, GIF, etc.</div>
+                </div>
+                <input type="file" id="imageFile" class="file-input" accept="image/*">
+                <button class="btn" onclick="analyzeFace()">
+                    <span>🎯</span> Analyze Emotions
+                </button>
+                <div class="loading" id="faceLoading">
+                    <div class="spinner"></div>
+                    <p>Analyzing facial emotions...</p>
+                </div>
+                <div id="faceResults">
+                    <h3>Résultats des émotions (image)</h3>
+                    <div id="faceEmotionTableContainer"></div>
+                
+                    <h3>Résultats des sentiments (image)</h3>
+                    <div id="faceSentimentTableContainer"></div>
+                </div>
+            </div>
+
+            <!-- Video Analysis Tab -->
+            <div class="tab-content" id="video">
+                <div class="upload-area" onclick="document.getElementById('videoFile').click()">
+                    <div class="upload-icon">🎬</div>
+                    <div class="upload-text">Drop your video here or click to browse</div>
+                    <div class="upload-subtext">Supported: MP4, MOV, AVI, etc. (Processing may take time)</div>
+                </div>
+                <input type="file" id="videoFile" class="file-input" accept="video/*">
+                <button class="btn" onclick="analyzeVideo()">
+                    <span>🎯</span> Analyze Video Emotions
+                </button>
+                <div class="loading" id="videoLoading">
+                    <div class="spinner"></div>
+                    <p>Processing video... This may take several minutes...</p>
+                </div>
+                <div id="videoResults">
+                    <h3>Analyse vidéo : émotions et sentiments par frame</h3>
+                    <div id="videoEmotionSentimentTableContainer"></div>
+                </div>
+                
+            </div>
+
+            <!-- Sentiment Analysis Tab -->
+            <div class="tab-content" id="sentiment">
+                <textarea class="text-input" id="textInput" placeholder="Enter your text here for sentiment analysis..."></textarea>
+                <button class="btn" onclick="analyzeSentiment()">
+                    <span>🎯</span> Analyze Sentiment
+                </button>
+                <div class="loading" id="sentimentLoading">
+                    <div class="spinner"></div>
+                    <p>Analyzing sentiment...</p>
+                </div>
+                <div id="sentimentResults"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        function renderFaceImageTables(data) {
+            const emotions = data.facial_emotions || [];
+
+            if (emotions.length === 0) {
+                document.getElementById("faceEmotionTableContainer").innerHTML = "<p>Aucune émotion détectée.</p>";
+                document.getElementById("faceSentimentTableContainer").innerHTML = "<p>Aucun sentiment détecté.</p>";
+                return;
+            }
+
+            // Collecte toutes les clés uniques d'émotions et sentiments pour créer les colonnes
+            const allEmotionLabels = new Set();
+            const allSentimentLabels = new Set();
+
+            emotions.forEach(face => {
+                Object.keys(face.emotions || {}).forEach(e => allEmotionLabels.add(e));
+                Object.keys(face.sentiments || {}).forEach(s => allSentimentLabels.add(s));
+            });
+
+            const emotionLabels = Array.from(allEmotionLabels);
+            const sentimentLabels = Array.from(allSentimentLabels);
+
+            // --- Tableau des émotions ---
+            let emotionTableHTML = `
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th>Face #</th>
+                            ${emotionLabels.map(e => `<th>${capitalize(e)}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            emotions.forEach((face, index) => {
+                emotionTableHTML += `<tr><td>${index + 1}</td>`;
+
+                emotionLabels.forEach(label => {
+                    const score = face.emotions && face.emotions[label] ? face.emotions[label] : 0;
+                    emotionTableHTML += `<td>${(score * 100).toFixed(1)}</td>`;
+                });
+
+                emotionTableHTML += `</tr>`;
+            });
+
+            emotionTableHTML += `</tbody></table>`;
+
+            // --- Tableau des sentiments ---
+            let sentimentTableHTML = `
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th>Face #</th>
+                            ${sentimentLabels.map(s => `<th>${capitalize(s)}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            emotions.forEach((face, index) => {
+                sentimentTableHTML += `<tr><td>${index + 1}</td>`;
+
+                sentimentLabels.forEach(label => {
+                    const score = face.sentiments && face.sentiments[label] ? face.sentiments[label] : 0;
+                    sentimentTableHTML += `<td>${(score * 100).toFixed(1)}</td>`;
+                });
+
+                sentimentTableHTML += `</tr>`;
+            });
+
+            sentimentTableHTML += `</tbody></table>`;
+
+            // Injection dans le DOM
+            document.getElementById("faceEmotionTableContainer").innerHTML = emotionTableHTML;
+            document.getElementById("faceSentimentTableContainer").innerHTML = sentimentTableHTML;
+        }
+
+        function displayVideoEmotionSentimentTables(data) {
+            const container = document.getElementById('videoEmotionSentimentTableContainer');
+            container.innerHTML = ''; // reset
+
+            const emotionsSet = new Set();
+            const sentimentsSet = new Set();
+
+            // Récupérer toutes les émotions et sentiments uniques présentes dans les frames
+            data.emotions_timeline.forEach(frame => {
+                frame.detected_faces.forEach(face => {
+                    Object.keys(face.emotions).forEach(e => emotionsSet.add(e));
+                    Object.keys(face.sentiments).forEach(s => sentimentsSet.add(s));
+                });
+            });
+
+            const emotionsList = Array.from(emotionsSet).sort();
+            const sentimentsList = Array.from(sentimentsSet).sort();
+
+            // --- Construction du tableau émotions ---
+            const emotionsTable = document.createElement('table');
+            emotionsTable.classList.add('result-table');
+
+            // Header
+            let headerRow = '<tr><th>Temps (s)</th>';
+            emotionsList.forEach(e => {
+                headerRow += `<th>${capitalize(e)}</th>`;
+            });
+            headerRow += '</tr>';
+            emotionsTable.innerHTML += headerRow;
+
+            // Rows
+            data.emotions_timeline.forEach(frame => {
+                // Pour chaque frame, moyenne si plusieurs visages (ici tu peux adapter)
+                let avgEmotions = {};
+                emotionsList.forEach(e => avgEmotions[e] = 0);
+                let facesCount = frame.detected_faces.length;
+
+                frame.detected_faces.forEach(face => {
+                    emotionsList.forEach(e => {
+                        avgEmotions[e] += face.emotions[e] || 0;
+                    });
+                });
+
+                // Moyenne par émotion
+                emotionsList.forEach(e => {
+                    avgEmotions[e] = facesCount > 0 ? avgEmotions[e] / facesCount : 0;
+                });
+
+                let row = `<tr><td>${frame.timestamp_seconds.toFixed(1)}</td>`;
+                emotionsList.forEach(e => {
+                    row += `<td>${(avgEmotions[e] * 100).toFixed(1)}%</td>`;
+                });
+                row += '</tr>';
+                emotionsTable.innerHTML += row;
+            });
+
+            // --- Construction du tableau sentiments ---
+            const sentimentsTable = document.createElement('table');
+            sentimentsTable.classList.add('result-table');
+
+            // Header
+            let sentimentHeader = '<tr><th>Temps (s)</th>';
+            sentimentsList.forEach(s => {
+                sentimentHeader += `<th>${capitalize(s)}</th>`;
+            });
+            sentimentHeader += '</tr>';
+            sentimentsTable.innerHTML += sentimentHeader;
+
+            // Rows
+            data.emotions_timeline.forEach(frame => {
+                let avgSentiments = {};
+                sentimentsList.forEach(s => avgSentiments[s] = 0);
+                let facesCount = frame.detected_faces.length;
+
+                frame.detected_faces.forEach(face => {
+                    sentimentsList.forEach(s => {
+                        avgSentiments[s] += face.sentiments[s] || 0;
+                    });
+                });
+
+                sentimentsList.forEach(s => {
+                    avgSentiments[s] = facesCount > 0 ? avgSentiments[s] / facesCount : 0;
+                });
+
+                let row = `<tr><td>${frame.timestamp_seconds.toFixed(1)}</td>`;
+                sentimentsList.forEach(s => {
+                    row += `<td>${(avgSentiments[s] * 100).toFixed(1)}%</td>`;
+                });
+                row += '</tr>';
+                sentimentsTable.innerHTML += row;
+            });
+
+            // Ajout au container
+            container.innerHTML = `<h4>Scores des émotions par frame</h4>`;
+            container.appendChild(emotionsTable);
+            container.innerHTML += `<h4>Scores des sentiments par frame</h4>`;
+            container.appendChild(sentimentsTable);
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // Global variables
+        let currentTab = 'transcribe';
+
+        // Tab switching functionality
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+
+            currentTab = tabName;
+        }
+
+        // Helper function to get API base URL
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.replace(/\/$/, '');
+        }
+
+        // Helper function to show loading
+        function showLoading(type) {
+            document.getElementById(`${type}Loading`).classList.add('show');
+        }
+
+        // Helper function to hide loading
+        function hideLoading(type) {
+            document.getElementById(`${type}Loading`).classList.remove('show');
+        }
+
+        // Helper function to display results
+        function displayResults(type, data) {
+            const resultsDiv = document.getElementById(`${type}Results`);
+            resultsDiv.innerHTML = `
+                <div class="results">
+                    <h3>Results</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        // Helper function to show file info
+        function showFileInfo(file, type) {
+            console.log(`${type} file selected:`, {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: new Date(file.lastModified)
+            });
+        }
+
+        // Helper function to display error
+        function displayError(type, message) {
+            const resultsDiv = document.getElementById(`${type}Results`);
+            resultsDiv.innerHTML = `
+                <div class="error">
+                    <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+
+        // Audio transcription function
+        async function transcribeAudio() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select an audio file first!');
+                return;
+            }
+
+            showFileInfo(file, 'Audio');
+
+            const formData = new FormData();
+            formData.append('audio', file);
+
+            showLoading('transcribe');
+
+            try {
+                const response = await fetch(`${getApiUrl()}/transcribe`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const result = await response.json();
+                displayResults('transcribe', result);
+            } catch (error) {
+                console.error('Transcription error:', error);
+                displayError('transcribe', error.message);
+            } finally {
+                hideLoading('transcribe');
+            }
+        }
+
+        // Face analysis function
+        async function analyzeFace() {
+            const fileInput = document.getElementById('imageFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select an image file first!');
+                return;
+            }
+
+            showFileInfo(file, 'Image');
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            showLoading('face');
+
+            try {
+                const response = await fetch(`${getApiUrl()}/analyze-face`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const result = await response.json();
+                renderFaceImageTables(result);
+            } catch (error) {
+                console.error('Face analysis error:', error);
+                displayError('face', error.message);
+            } finally {
+                hideLoading('face');
+            }
+        }
+
+        // Video analysis function
+        async function analyzeVideo() {
+            const fileInput = document.getElementById('videoFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select a video file first!');
+                return;
+            }
+
+            showFileInfo(file, 'Video');
+
+            const formData = new FormData();
+            formData.append('video', file);
+
+            showLoading('video');
+
+            try {
+                const response = await fetch(`${getApiUrl()}/analyze-video-emotions`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const result = await response.json();
+                displayVideoEmotionSentimentTables(result)
+            } catch (error) {
+                console.error('Video analysis error:', error);
+                displayError('video', error.message);
+            } finally {
+                hideLoading('video');
+            }
+        }
+
+        // Sentiment analysis function
+        async function analyzeSentiment() {
+            const textInput = document.getElementById('textInput');
+            const text = textInput.value.trim();
+
+            if (!text) {
+                alert('Please enter some text first!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('text', text);
+
+            showLoading('sentiment');
+
+            try {
+                const response = await fetch(`${getApiUrl()}/analyze-text-sentiment`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                displayResults('sentiment', result);
+            } catch (error) {
+                displayError('sentiment', error.message);
+            } finally {
+                hideLoading('sentiment');
+            }
+        }
+
+        // Function to update upload area display
+        function updateUploadAreaDisplay(tabName, fileName) {
+            const uploadArea = document.querySelector(`#${tabName} .upload-area`);
+            const icons = {
+                'transcribe': '🎵',
+                'face': '😊', 
+                'video': '🎬'
+            };
+            
+            uploadArea.innerHTML = `
+                <div class="upload-icon">${icons[tabName]}</div>
+                <div class="upload-text">File selected: ${fileName}</div>
+                <div class="upload-subtext">Click to change file or drag a new one</div>
+            `;
+        }
+
+        // Function to reset upload area display
+        function resetUploadAreaDisplay(tabName) {
+            const uploadArea = document.querySelector(`#${tabName} .upload-area`);
+            const config = {
+                'transcribe': {
+                    icon: '🎵',
+                    text: 'Drop your audio file here or click to browse',
+                    subtext: 'Supported: MP3, WAV, M4A, etc.'
+                },
+                'face': {
+                    icon: '😊',
+                    text: 'Drop your image here or click to browse',
+                    subtext: 'Supported: JPG, PNG, GIF, etc.'
+                },
+                'video': {
+                    icon: '🎬',
+                    text: 'Drop your video here or click to browse',
+                    subtext: 'Supported: MP4, MOV, AVI, etc. (Processing may take time)'
+                }
+            };
+            
+            const conf = config[tabName];
+            uploadArea.innerHTML = `
+                <div class="upload-icon">${conf.icon}</div>
+                <div class="upload-text">${conf.text}</div>
+                <div class="upload-subtext">${conf.subtext}</div>
+            `;
+        }
+
+        // Drag and drop functionality
+        function setupDragAndDrop() {
+            const uploadAreas = document.querySelectorAll('.upload-area');
+            
+            uploadAreas.forEach(area => {
+                area.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    area.classList.add('dragover');
+                });
+
+                area.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                });
+
+                area.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    area.classList.remove('dragover');
+                });
+
+                area.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    area.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        const file = files[0];
+                        
+                        // Create a new FileList-like object
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        
+                        // Determine which input to use based on current tab and file type
+                        if (currentTab === 'transcribe' && file.type.startsWith('audio/')) {
+                            document.getElementById('audioFile').files = dt.files;
+                            updateUploadAreaDisplay('transcribe', file.name);
+                        } else if (currentTab === 'face' && file.type.startsWith('image/')) {
+                            document.getElementById('imageFile').files = dt.files;
+                            updateUploadAreaDisplay('face', file.name);
+                        } else if (currentTab === 'video' && file.type.startsWith('video/')) {
+                            document.getElementById('videoFile').files = dt.files;
+                            updateUploadAreaDisplay('video', file.name);
+                        } else {
+                            alert(`Invalid file type for ${currentTab} analysis. Please select a valid ${currentTab === 'transcribe' ? 'audio' : currentTab === 'face' ? 'image' : 'video'} file.`);
+                        }
+                    }
+                });
+            });
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            setupDragAndDrop();
+
+            // Add file change event listeners
+            document.getElementById('audioFile').addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    updateUploadAreaDisplay('transcribe', e.target.files[0].name);
+                } else {
+                    resetUploadAreaDisplay('transcribe');
+                }
+            });
+
+            document.getElementById('imageFile').addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    updateUploadAreaDisplay('face', e.target.files[0].name);
+                } else {
+                    resetUploadAreaDisplay('face');
+                }
+            });
+
+            document.getElementById('videoFile').addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    updateUploadAreaDisplay('video', e.target.files[0].name);
+                } else {
+                    resetUploadAreaDisplay('video');
+                }
+            });
+
+            // Add Enter key support for sentiment analysis
+            document.getElementById('textInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    analyzeSentiment();
+                }
+            });
+        });
+        function capitalize(str) {
+            if (!str) return '';
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+    </script>
+</body>
+</html>

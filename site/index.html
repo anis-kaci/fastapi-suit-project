@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accueil</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            text-align: center;
+        }
+        h1 {
+            margin-bottom: 30px;
+        }
+        button {
+            display: block;
+            width: 80%;
+            margin: 15px auto;
+            padding: 15px;
+            font-size: 18px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            color: white;
+        }
+        #btn1 { background-color: #007bff; }
+        #btn2 { background-color: #28a745; }
+        #btn3 { background-color: #ffc107; color: black; }
+        #logoutBtn { background-color: #dc3545; }
+        button:hover {
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+    <h1>Bienvenue sur votre tableau de bord</h1>
+    <button id="btn1">Essayer notre API</button>
+    <button id="btn2">Essayer notre analyse</button>
+    <button id="btn3">Essayer à temps réel</button>
+    <button id="logoutBtn">Se déconnecter</button>
+
+    <script>
+        async function checkSession() {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/home', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (response.status === 401) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error("Erreur serveur");
+                }
+                const data = await response.json();
+                console.log("Bienvenue " + data.user_name);
+                // Tu peux aussi afficher un message personnalisé ici
+            } catch (e) {
+                console.error(e);
+                alert("Erreur lors de la vérification de la session. Veuillez vous reconnecter.");
+                window.location.href = 'login.html';
+            }
+        }
+
+        document.getElementById('btn1').onclick = () => {
+            window.location.href = 'suit-web-app-bis.html';
+        };
+        document.getElementById('btn2').onclick = () => {
+            window.location.href = 'test_interview_analysis.html';
+        };
+        document.getElementById('btn3').onclick = () => {
+            window.location.href = 'test_interview_real_time.html';
+        };
+        document.getElementById('logoutBtn').onclick = () => {
+            localStorage.removeItem('authToken');
+            window.location.href = 'login.html';
+        };
+
+        checkSession();
+    </script>
+</body>
+</html>
