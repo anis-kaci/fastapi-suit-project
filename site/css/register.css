@@ -1,0 +1,58 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f6f8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.register-container {
+    background-color: white;
+    padding: 2em;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    width: 400px;
+}
+.register-container h2 {
+    text-align: center;
+}
+input, select {
+    width: 100%;
+    padding: 0.8em;
+    margin: 0.4em 0;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+}
+button {
+    width: 100%;
+    padding: 0.8em;
+    background-color: #28a745;
+    border: none;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 1em;
+    font-size: 1em;
+}
+button:hover {
+    background-color: #218838;
+}
+.error, .success {
+    text-align: center;
+    margin-top: 1em;
+}
+.error {
+    color: red;
+}
+.success {
+    color: green;
+}
+/* Style du bouton de redirection */
+#goToLogin {
+    background-color: #007bff;
+    margin-top: 0.5em;
+}
+#goToLogin:hover {
+    background-color: #0056b3;
+}

@@ -7,31 +7,61 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, Response, Cookie, Header
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, Response, Cookie, Header, Request
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel, EmailStr
 from typing import Dict
-from typing import Optional, List
+from typing import Optional, Any, List
 from sqlalchemy.orm import Session as DBSession
 from passlib.context import CryptContext
 from db.database import SessionLocal, engine, Base
-from db.models import User, UserCredentials
+from db.models import User, UserCredentials, FacialAnalysis
+from db.results import save_facial_analysis
 from datetime import datetime
 from db.models import Session, User # modèles pour User et Session
 import uuid
-
 import json # Import json for WebSocket communication
 import logging # Import logging
-
 # Imports for Sentiment Analysis
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 import torch
 
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class TimelineEntry(BaseModel):
+    timestamp: int
+    emotion: Optional[str]
+    sentiment: Optional[str]
+
+'''class AnalysisRequest(BaseModel):
+    session_id: int
+    dominant_emotion: Optional[str]
+    emotion_timeline: List[TimelineEntry]
+    dominant_sentiment: Optional[str]
+    sentiment_timeline: Optional[List[TimelineEntry]]
+    duration: float
+    frames: int'''
+
+class TimelineEntry(BaseModel):
+    timestamp: float
+    emotion: str
+    sentiment: str
+
+class AnalysisRequest(BaseModel):
+    session_id: int
+    dominant_emotion: str
+    emotion_timeline: List[Dict[str, Any]]
+    dominant_sentiment: str
+    sentiment_timeline: List[Dict[str, Any]]
+    duration: float
+    frames: int
 
 
 # --- Pydantic Models for API Responses ---
@@ -101,6 +131,11 @@ def get_device():
         return torch.device("cpu")
     
 
+def bytes_to_cv2_image(image_bytes: bytes):
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)  # BGR numpy array
+    return img_np
+
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="Multimodal Chatbot API",
@@ -129,6 +164,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+app.mount("/static", StaticFiles(directory="/Users/meriemhamdane/Downloads/fastapi-suit-project-main/site", html=True), name="static")
+
 #--- pour la page d'accueil
 
 @app.get("/home")
@@ -148,7 +186,7 @@ def home(authorization: str = Header(None), db: DBSession = Depends(get_db)):
 
 # ---- register a new user ----
 @app.post("/register")
-def register_user(data: RegisterRequest, db: DBSession = Depends(get_db)):
+async def register_user(data: RegisterRequest, db: DBSession = Depends(get_db)):
     # Vérifie si l'email existe déjà
     existing = db.query(UserCredentials).filter_by(email=data.email).first()
     if existing:
@@ -184,7 +222,7 @@ class LoginRequest(BaseModel):
     password: str
 
 @app.post("/login")
-def login(data: LoginRequest, db: DBSession = Depends(get_db)):
+async def login(data: LoginRequest, db: DBSession = Depends(get_db)):
     user_cred = db.query(UserCredentials).filter(UserCredentials.email == data.email).first()
     if not user_cred or not pwd_context.verify(data.password, user_cred.hashed_password):
         raise HTTPException(status_code=400, detail="Email ou mot de passe incorrect")
@@ -199,7 +237,7 @@ def login(data: LoginRequest, db: DBSession = Depends(get_db)):
     db.commit()
     db.refresh(new_session)
 
-    return {"message": "Connexion réussie", "token": new_session.token}
+    return {"message": "Connexion réussie", "token": new_session.token, "session_id": new_session.id}
 
 # --- Global Model Loading (for performance) ---
 
@@ -236,7 +274,7 @@ except Exception as e:
 
 
 # Define facial emotion labels and input size globally, based on your model
-EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
+EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 MODEL_INPUT_SIZE = (96, 96) # Height, Width
 
 SENTIMENT_IMAGE_LABELS = ['Negative', 'Neutral', 'Positive']
@@ -813,8 +851,10 @@ async def analyze_interview_video(video: UploadFile = File(..., description="Int
             os.unlink(temp_file_path)
             logger.info(f"Cleaned up temporary video file: {temp_file_path}")
 
+
+
 # --- NEW: WebSocket Endpoint for Real-time Webcam Analysis ---
-@app.websocket("/ws/analyze-webcam")
+'''@app.websocket("/ws/analyze-webcam")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established for real-time webcam analysis.")
@@ -842,7 +882,112 @@ async def websocket_endpoint(websocket: WebSocket):
         # Optionally send an error message to the client before closing
         await websocket.send_json({"error": str(e), "message": "An error occurred during real-time analysis."})
     finally:
+        logger.info("WebSocket connection closed.")'''
+
+'''@app.websocket("/ws/analyze-webcam")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("WebSocket connection established for real-time webcam analysis.")
+    try:
+        while True:
+            # Receive binary data (image frame) from the client
+            image_bytes = await websocket.receive_bytes()
+            
+            # Perform facial emotion analysis on the received frame
+            detected_faces = await analyze_facial_emotions(image_bytes)
+
+            # Prepare the response data
+            response_data = {
+                "facial_emotions": detected_faces
+            }
+            
+            # Send the analysis result back to the client as JSON
+            await websocket.send_json(response_data)
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected from client.")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await websocket.send_json({
+            "error": str(e),
+            "message": "An error occurred during real-time analysis."
+        })
+    finally:
+        logger.info("WebSocket connection closed.")'''
+
+@app.websocket("/ws/analyze-webcam")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("WebSocket connection established for real-time webcam analysis.")
+
+    try:
+        while True:
+            image_bytes = await websocket.receive_bytes()
+
+            # Analyse émotions et sentiments en parallèle (ou séquentiellement)
+            emotions = await analyze_facial_emotions(image_bytes)
+            sentiments = await analyze_facial_sentiments(image_bytes)
+
+            # Association par bounding box (simple fusion basée sur les coordonnées)
+            combined_results = []
+
+            for emo_face in emotions:
+                bbox = emo_face["bounding_box"]
+                matched_sentiment = next(
+                    (s for s in sentiments if s["bounding_box"] == bbox),
+                    None
+                )
+
+                combined_results.append({
+                    "bounding_box": bbox,
+                    "emotions": emo_face.get("emotions", {}),
+                    "sentiments": matched_sentiment.get("sentiments", {}) if matched_sentiment else {}
+                })
+
+            response_data = {
+                "facial_emotions": combined_results
+            }
+
+            await websocket.send_json(response_data)
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected from client.")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await websocket.send_json({
+            "error": str(e),
+            "message": "An error occurred during real-time analysis."
+        })
+    finally:
         logger.info("WebSocket connection closed.")
+
+
+
+# route principale POST
+@app.post("/api/save-webcam-analysis")
+async def save_webcam_analysis_api(request: Request, db: Session = Depends(get_db)):
+    print("✅ Appel API reçu !")
+    data = await request.json()
+    
+    print("📦 Données reçues :", data)
+    # Extraction des données JSON
+    session_id = data.get("session_id")
+    dominant_emotion = data.get("dominant_emotion")
+    emotion_timeline = data.get("emotion_timeline")
+    dominant_sentiment = data.get("dominant_sentiment")
+    sentiment_timeline = data.get("sentiment_timeline")
+    duration = data.get("duration_seconds")
+    frames = data.get("frames")
+
+    # Appel à ta fonction de sauvegarde
+    save_facial_analysis(
+        db, session_id,
+        dominant_emotion, emotion_timeline,
+        dominant_sentiment, sentiment_timeline,
+        duration, frames
+    )
+
+    return {"message": "Facial analysis saved successfully."}
 
 
 # --- Root Endpoint for API testing ---

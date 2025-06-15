@@ -1,0 +1,98 @@
+body {
+font-family: 'Segoe UI', sans-serif;
+margin: 0;
+padding: 20px;
+background: #f4f6f8;
+}
+
+.live-practice-section {
+background: #fff;
+border-radius: 20px;
+padding: 30px;
+box-shadow: 0 0 40px rgba(0, 0, 0, 0.08);
+margin: auto;
+max-width: 1100px;
+}
+
+.section-title {
+color: #2c3e50;
+margin-bottom: 25px;
+font-size: 1.8rem;
+}
+
+.practice-grid {
+display: flex;
+flex-wrap: wrap;
+gap: 30px;
+}
+
+.video-preview, .feedback-panel {
+flex: 1;
+min-width: 300px;
+}
+
+.video-box {
+width: 100%;
+border-radius: 15px;
+background: #000;
+}
+
+.controls {
+margin-top: 15px;
+display: flex;
+gap: 10px;
+}
+
+.controls button {
+flex: 1;
+padding: 10px;
+font-size: 16px;
+border: none;
+border-radius: 10px;
+cursor: pointer;
+transition: background 0.3s;
+}
+
+.btn-start {
+background: #2ecc71;
+color: white;
+}
+
+.btn-start:hover {
+background: #27ae60;
+}
+
+.btn-stop {
+background: #95a5a6;
+color: white;
+}
+
+.btn-stop:hover {
+background: #7f8c8d;
+}
+
+.feedback-section {
+background: #f8f9ff;
+padding: 15px;
+border-radius: 10px;
+margin-bottom: 20px;
+}
+
+.feedback-section h4 {
+margin-bottom: 10px;
+}
+
+#transcriptionText {
+background: #f0f0f0;
+padding: 10px;
+border-radius: 8px;
+font-family: monospace;
+max-height: 150px;
+overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+.practice-grid {
+    flex-direction: column;
+}
+}

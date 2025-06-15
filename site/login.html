@@ -4,61 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Connexion</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 400px;
-            margin: 50px auto;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-        }
-        h2 {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-top: 15px;
-            font-weight: bold;
-        }
-        input[type="email"],
-        input[type="password"] {
-            width: 100%;
-            padding: 8px;
-            margin-top: 5px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            margin-top: 20px;
-            width: 100%;
-            padding: 10px;
-            background-color: #007bff;
-            color: white;
-            font-size: 16px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        /* Nouveau bouton inscription */
-        #registerBtn {
-            background-color: #28a745;
-            margin-top: 15px;
-        }
-        #registerBtn:hover {
-            background-color: #218838;
-        }
-        .error-message {
-            color: red;
-            margin-top: 10px;
-            text-align: center;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/login.css">
 </head>
 <body>
     <h2>Connexion</h2>
@@ -76,48 +22,6 @@
 
     <p class="error-message" id="errorMsg"></p>
 
-    <script>
-        const form = document.getElementById('loginForm');
-        const errorMsg = document.getElementById('errorMsg');
-        const registerBtn = document.getElementById('registerBtn');
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            errorMsg.textContent = "";
-
-            const data = {
-                email: form.email.value.trim(),
-                password: form.password.value,
-            };
-
-            try {
-                const response = await fetch('http://localhost:8000/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data),
-                });
-
-                if (response.ok) {
-                    const resData = await response.json();
-                    // Stocker le token JWT dans localStorage
-                    localStorage.setItem('authToken', resData.token);
-                    // Redirection vers la page d'accueil
-                    window.location.href = 'index.html';
-                } else {
-                    const errorData = await response.json();
-                    errorMsg.textContent = errorData.detail || 'Email ou mot de passe incorrect.';
-                }
-            } catch (error) {
-                errorMsg.textContent = "Erreur réseau, veuillez réessayer plus tard.";
-                console.error(error);
-            }
-        });
-
-        registerBtn.addEventListener('click', () => {
-            window.location.href = 'register.html';
-        });
-    </script>
+    <script src="/static/js/login.js"></script>
 </body>
 </html>

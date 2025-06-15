@@ -1,0 +1,48 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+/* Custom spinner animation */
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-left-color: #6366f1; /* Tailwind indigo-500 */
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Container for video and canvas overlay */
+.video-container {
+    position: relative;
+    width: 100%;
+    max-width: 800px; /* Adjust as needed */
+    margin: 0 auto;
+    border-radius: 0.5rem; /* rounded-lg */
+    overflow: hidden; /* Ensures contents stay within rounded borders */
+    background-color: black; /* To show black background if video is not loaded */
+}
+.video-container video,
+.video-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+/* REMOVED: transform: scaleX(-1); from here. We'll mirror on canvas. */
+.video-container video {
+    z-index: 1; /* Video behind canvas */
+}
+.video-container canvas {
+    z-index: 2; /* Canvas on top of video */
+}
+/* Maintain aspect ratio with padding-bottom trick */
+.video-aspect-ratio {
+    padding-bottom: 56.25%; /* 16:9 aspect ratio (height / width * 100) */
+    position: relative;
+    width: 100%;
+}
