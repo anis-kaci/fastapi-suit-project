@@ -24,6 +24,8 @@ button {
 #btn1 { background-color: #007bff; }
 #btn2 { background-color: #28a745; }
 #btn3 { background-color: #ffc107; color: black; }
+#btn4 { background-color: #e847b5; }
+#btnDash { background-color: rgb(62, 0, 68);}
 #logoutBtn { background-color: #dc3545; }
 button:hover {
     opacity: 0.85;

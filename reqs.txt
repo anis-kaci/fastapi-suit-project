@@ -16,3 +16,7 @@ sqlalchemy
 passlib
 pymysql
 pydantic[email]
+bcrypt
+librosa
+joblib
+xgboost 

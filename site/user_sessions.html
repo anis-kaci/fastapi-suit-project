@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mes Sessions Utilisateur</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        .charts-container {
+            display: flex;
+            gap: 50px;
+            flex-wrap: wrap;
+        }
+        .chart-box {
+            flex: 1 1 300px;
+            max-width: 400px;
+            text-align: center;
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Mes Sessions Utilisateur</h1>
+    <button id="logoutBtn">Déconnexion</button>
+</header>
+
+<div id="controls">
+    <label for="sessionLimit">Nombre de sessions :</label>
+    <input type="number" id="sessionLimit" min="1" max="1000" value="10" />
+    <button id="refreshBtn">Rafraîchir</button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Session ID</th>
+            <th>Date / Heure</th>
+            <th>Émotion dominante</th>
+            <th>Sentiment facial dominant</th>
+            <th>Sentiment textuel dominant</th>
+            <th>Confiance texte</th>
+        </tr>
+    </thead>
+    <tbody id="sessionsTableBody">
+        <!-- Les données seront insérées ici dynamiquement -->
+    </tbody>
+</table>
+
+<div class="charts-container">
+    <div class="chart-box">
+        <h3>Répartition des émotions dominantes</h3>
+        <canvas id="emotionChart" width="400" height="400"></canvas>
+    </div>
+    <div class="chart-box">
+        <h3>Répartition des sentiments faciaux dominants</h3>
+        <canvas id="sentimentChart" width="400" height="400"></canvas>
+    </div>
+</div>
+
+<!-- Import Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Ton script JS -->
+<script src="/static/js/mes_sessions.js"></script>
+<script src="/static/js/auth.js" defer></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        checkSession();
+    });
+</script>
+
+</body>
+</html>

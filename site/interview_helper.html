@@ -7,42 +7,52 @@
     <link rel="stylesheet" href="/static/css/interview_helper.css">
 </head>
 <body>
-    <script src="/static/js/interview_helper.js"></script>
+    <script src="/static/js/interview_helper.js" defer></script>
     <script src="/static/js/auth.js" defer></script>
-    <script>
+    <script defer>
         document.addEventListener('DOMContentLoaded', () => {
             checkSession();
         });
     </script>
+
     <div class="container">
-        <div class="header">
+        <div class="header" style="position: relative;">
             <h1>SUIT</h1>
             <p>Your AI-Powered Interview Coach & Performance Analytics</p>
+                <button 
+                    id="logoutBtn" 
+                    style="
+                        position: absolute; 
+                        top: 10px; 
+                        right: 20px; 
+                        background-color: #d9534f; 
+                        border: none; 
+                        color: white; 
+                        padding: 8px 14px; 
+                        font-size: 14px; 
+                        cursor: pointer; 
+                        border-radius: 4px;
+                    "
+                >
+                    Déconnexion
+                </button>
         </div>
-
         <div class="user-profile">
             <div class="profile-info">
-                <div class="avatar">JD</div>
+                <div class="avatar" id="user-initials">JD</div>
                 <div>
-                    <div style="font-size: 18px; font-weight: 600;">Anis KACI</div>
-                    <div style="opacity: 0.8;">Data Scientist Track</div>
+                    <div id="user-name" style="font-size: 18px; font-weight: 600;">Nom Prénom</div>
+                    <div id="user-position" style="opacity: 0.8;">Poste cible</div>
                 </div>
             </div>
             <div class="user-stats">
                 <div class="stat-item">
-                    <div class="stat-value">47</div>
+                    <div id="session-count" class="stat-value">0</div>
                     <div>Sessions</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">23h</div>
-                    <div>Practice Time</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">8.2</div>
-                    <div>Avg Score</div>
                 </div>
             </div>
         </div>
+        
 
         <div class="tabs">
             <button class="tab active" onclick="switchTab('practice')">🎯 Live Practice</button>
@@ -92,129 +102,194 @@
                             <input type="text" id="companyFocus" placeholder="e.g., Google, Meta, Startup">
                         </div>
                     </div>
-                    <button class="btn btn-success" onclick="startPracticeSession()">
+                    <button id="btnPractice" class="btn btn-success">
                         <span>🚀</span> Start Practice Session
                     </button>
-                </div>
-
-                <div class="live-session" id="liveSession">
-                    <div class="video-container">
-                        <video class="video-feed" id="videoFeed" autoplay muted></video>
-                        <div class="video-overlay">
-                            <div class="recording-indicator">
-                                <div class="recording-dot"></div>
-                                LIVE ANALYSIS
-                            </div>
-                            <div class="session-timer" id="sessionTimer">00:00</div>
-                        </div>
-                        <div class="session-controls">
-                            <button class="control-btn pause-btn" onclick="pauseSession()" title="Pause">⏸️</button>
-                            <button class="control-btn stop-btn" onclick="stopSession()" title="End Session">⏹️</button>
-                        </div>
-                    </div>
-                    
-                    <div class="live-feedback">
-                        <div class="current-question">
-                            <div class="question-text" id="currentQuestion">
-                                Tell me about a challenging project you've worked on and how you overcame the obstacles.
-                            </div>
-                            <div class="question-category">Behavioral Question • Mid Level</div>
-                        </div>
-
-                        <div class="feedback-section">
-                            <div class="feedback-title">
-                                <span>😊</span> Confidence Level
-                            </div>
-                            <div class="confidence-meter">
-                                <div class="confidence-fill" id="confidenceFill"></div>
-                                <div class="confidence-value" id="confidenceValue">72%</div>
-                            </div>
-                        </div>
-
-                        <div class="feedback-section">
-                            <div class="feedback-title">
-                                <span>🎭</span> Emotional Analysis
-                            </div>
-                            <div class="emotion-grid">
-                                <div class="emotion-item">
-                                    <div class="emotion-emoji">😊</div>
-                                    <div class="emotion-label">Joy</div>
-                                    <div class="emotion-value">65%</div>
-                                </div>
-                                <div class="emotion-item">
-                                    <div class="emotion-emoji">😟</div>
-                                    <div class="emotion-label">Anxiety</div>
-                                    <div class="emotion-value">23%</div>
-                                </div>
-                                <div class="emotion-item">
-                                    <div class="emotion-emoji">😐</div>
-                                    <div class="emotion-label">Neutral</div>
-                                    <div class="emotion-value">12%</div>
-                                </div>
-                                <div class="emotion-item">
-                                    <div class="emotion-emoji">😤</div>
-                                    <div class="emotion-label">Focus</div>
-                                    <div class="emotion-value">78%</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="feedback-section">
-                            <div class="feedback-title">
-                                <span>🗣️</span> Speaking Pace
-                            </div>
-                            <div style="background: #27AE60; color: white; padding: 10px; border-radius: 8px; text-align: center; font-weight: 600;">
-                                Optimal (145 WPM)
-                            </div>
-                        </div>
-
-                        <div class="feedback-section">
-                            <div class="feedback-title">
-                                <span>💡</span> Real-time Tips
-                            </div>
-                            <div style="background: #3498DB; color: white; padding: 12px; border-radius: 8px; font-size: 14px;">
-                                Great eye contact! Try to provide more specific examples with metrics.
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             <!-- Performance Dashboard Tab -->
             <div class="tab-content" id="dashboard">
                 <h2 style="margin-bottom: 30px; color: #2C3E50;">📊 Performance Dashboard</h2>
-                
                 <div class="dashboard-overview">
                     <div class="metric-card">
                         <div class="metric-icon">🎯</div>
-                        <div class="metric-value">8.2</div>
-                        <div class="metric-label">Overall Score</div>
-                        <div class="metric-change positive">+0.8 this week</div>
+                        <div class="metric-value" id="metric-positive-value">--</div>
+                        <div class="metric-label">Positive sentiments</div>
+                        <div class="metric-change positive" id="metric-positive-change">--</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-icon">⏱️</div>
-                        <div class="metric-value">23h</div>
+                        <div class="metric-value" id="metric-practice-value">--</div>
                         <div class="metric-label">Total Practice</div>
-                        <div class="metric-change positive">+4.2h this week</div>
+                        <div class="metric-change positive" id="metric-practice-change">--</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-icon">😊</div>
-                        <div class="metric-value">74%</div>
-                        <div class="metric-label">Avg Confidence</div>
-                        <div class="metric-change positive">+12% this week</div>
+                        <div class="metric-value" id="metric-emotion-value">--</div>
+                        <div class="metric-label">Dominant Emotion</div>
+                        <div class="metric-change positive" id="metric-emotion-change">--</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-icon">🎪</div>
-                        <div class="metric-value">47</div>
+                        <div class="metric-value" id="metric-sessions-value">--</div>
                         <div class="metric-label">Sessions</div>
-                        <div class="metric-change positive">+8 this week</div>
+                        <div class="metric-change positive" id="metric-sessions-change">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon">😰</div>
+                        <div class="metric-value" id="metric-stress-value">--</div>
+                        <div class="metric-label">Avg Stress Level</div>
+                        <div class="metric-change" id="metric-stress-change">--</div>
+                    </div>
+                    
+                </div>
+            </div>
+            <!-- Advanced Analytics Tab -->
+            <!--<div class="tab-content" id="analytics">
+                <h2 style="margin-bottom: 30px; color: #2C3E50;">📈 Advanced Analytics</h2>
+                <p>Coming soon... Detailed breakdowns by topic, question type, emotion trends, and more.</p>
+            </div>-->
+            <!-- Advanced Analytics Tab -->
+            <!-- Advanced Analytics Tab -->
+            <div class="tab-content" id="analytics">
+                <h2 style="margin-bottom: 30px; color: #2C3E50;">📈 Advanced Analytics</h2>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+                    <div style="flex: 1; min-width: 300px;">
+                        <h4>🎭 Emotion Distribution</h4>
+                        <canvas id="emotionChart" width="400" height="400"></canvas>
+                    </div>
+
+                    <div style="flex: 1; min-width: 300px;">
+                        <h4>💬 Sentiment Analysis</h4>
+                        <canvas id="sentimentChart" width="400" height="400"></canvas>
                     </div>
                 </div>
 
-                <div class="performance-grid">
-                    <div class="session-history">
-                        <h3 style="margin-bottom: 20px; color: #2C3E50;">📈 Recent Sessions</h3>
-                        <div class="session-item">
-                            <div class="session-info">
-                                <div class="session-date">Today, 2:30 PM</div>
-                                <div class="session-details">
+                <div style="margin-top: 50px;">
+                    <h4>📉 Stress Global Over Time</h4>
+                    <canvas id="stressChart" width="800" height="400"></canvas>
+                </div>
+            </div>
+
+    
+            <!-- Question Bank Tab -->
+            <div class="tab-content" id="questions">
+                <h2 style="margin-bottom: 30px; color: #2C3E50;">❓ Question Bank</h2>
+                <div class="question-bank">
+                    <input type="text" placeholder="Search questions..." class="search-box">
+                
+                    <div id="question-list"></div> <!-- Conteneur dédié aux questions -->
+                
+                    <button id="add-question-btn">➕ Ajouter une question</button>
+                
+                    <div id="add-question-form" style="display: none; margin-top: 20px;">
+                        <textarea id="new-question-text" rows="3" placeholder="Écris ta question ici..."></textarea><br>
+                        <button id="submit-question-btn">📤 Enregistrer</button>
+                    </div>
+                </div>
+                
+            </div>
+    
+            <!-- Settings Tab -->
+            <div class="tab-content" id="settings">
+                <h2 style="margin-bottom: 30px; color: #2C3E50;">⚙️ Settings</h2>
+                <div class="settings-section">
+                    <label for="nameInput">Display Name</label>
+                    <input type="text" id="nameInput" placeholder="Enter your name" value="Anis KACI">
+                </div>
+                <div class="settings-section">
+                    <label for="trackSelect">Track</label>
+                    <select id="trackSelect">
+                        <option selected>Data Scientist Track</option>
+                        <option>Software Engineer Track</option>
+                        <option>Product Manager Track</option>
+                        <option>AI Researcher Track</option>
+                    </select>
+                </div>
+                <button class="btn btn-save" onclick="saveSettings()">💾 Save Changes</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    const token = localStorage.getItem("authToken"); // Assure-toi que ce token est bien enregistré après login
+
+    async function fetchAndDrawCharts() {
+        await drawEmotionChart();
+        await drawSentimentChart();
+        await drawStressLineChart();
+    }
+
+    async function fetchWithAuth(url) {
+        const res = await fetch(url, {
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        });
+
+        if (!res.ok) {
+            const error = await res.text();
+            console.error("API Error:", error);
+            throw new Error(`Request to ${url} failed with status ${res.status}`);
+        }
+
+        return res.json();
+    }
+
+    async function drawEmotionChart() {
+        const data = await fetchWithAuth("/analytics/emotions");
+
+        new Chart(document.getElementById("emotionChart"), {
+            type: "doughnut",
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: "Emotions",
+                    data: data.data,
+                    backgroundColor: ["#FF6384", "#36A2EB", "#FFCE56", "#8e44ad", "#2ecc71"]
+                }]
+            }
+        });
+    }
+
+    async function drawSentimentChart() {
+        const data = await fetchWithAuth("/analytics/sentiments");
+
+        new Chart(document.getElementById("sentimentChart"), {
+            type: "bar",
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: "Sentiments",
+                    data: data.data,
+                    backgroundColor: ["#3498db", "#e74c3c", "#f1c40f"]
+                }]
+            }
+        });
+    }
+
+    async function drawStressLineChart() {
+        const data = await fetchWithAuth("/analytics/stress-over-time");
+
+        new Chart(document.getElementById("stressChart"), {
+            type: "line",
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: "Stress Global Over Time",
+                    data: data.data,
+                    fill: false,
+                    borderColor: "#e67e22",
+                    tension: 0.1
+                }]
+            }
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", fetchAndDrawCharts);
+    </script>
+</body>
+</html>
+    

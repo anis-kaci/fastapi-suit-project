@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Dashboard</title></head>
+<body>
+  <h1>Tableau de bord</h1>
+  <label>
+    Nombre de sessions à afficher :
+    <input id="sessionLimit" type="number" value="5" min="1" style="width:60px">
+    <button id="refreshBtn">Afficher</button>
+  </label>
+  <table style="margin-top:20px">
+    <thead><tr>
+      <th>Session ID</th><th>Créé le</th><th>Émotion dominante</th>
+      <th>Sentiment facial</th><th>Sentiment texte</th><th>Confiance texte</th>
+    </tr></thead>
+    <tbody id="sessionsTableBody"></tbody>
+  </table>
+
+  <script defer src="/static/js/dashboard.js"></script>
+    <script src="/static/js/auth.js" defer></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            checkSession();
+        });
+    </script>
+</body>
+</html>

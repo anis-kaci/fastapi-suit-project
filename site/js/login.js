@@ -26,7 +26,7 @@ const form = document.getElementById('loginForm');
                     localStorage.setItem('authToken', resData.token);
                     localStorage.setItem('sessionId', resData.session_id);
                     // Redirection vers la page d'accueil
-                    window.location.href = 'index.html';
+                    window.location.href = 'interview_helper.html';
                 } else {
                     const errorData = await response.json();
                     errorMsg.textContent = errorData.detail || 'Email ou mot de passe incorrect.';

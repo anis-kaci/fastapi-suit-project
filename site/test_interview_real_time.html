@@ -9,9 +9,16 @@
     <link rel="stylesheet" href="/static/css/webCamStyle.css">
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+    <!-- Header avec titre et bouton accueil -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">Analyseur de Vidéo d'Entretien IA</h1>
+        <a href="/" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded hover:bg-indigo-700 transition">
+            Accueil
+        </a>
+    </div>
     <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-4xl">
         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Analyseur de Vidéo d'Entretien IA</h1>
-        <p class="text-gray-600 mb-6 text-center">Téléchargez une vidéo d'entretien ou utilisez votre webcam pour obtenir une analyse en temps réel des émotions faciales. Obtenez également la transcription audio et l'analyse du sentiment du texte pour les vidéos enregistrées.</p>
+        <p class="text-gray-600 mb-6 text-center">Téléchargez une vidéo d'entretien ou utilisez votre webcam pour obtenir une analyse en temps réel des émotions faciales. Obtenez également la transcription audio, l'analyse du sentiment du texte et l'analyse des émotions audio pour les vidéos enregistrées.</p>
 
         <div class="flex border-b border-gray-200 mb-6">
             <button id="uploadTab" class="py-2 px-4 text-sm font-medium text-indigo-600 border-b-2 border-indigo-600 focus:outline-none">
@@ -31,6 +38,12 @@
                     Analyser la Vidéo
                 </button>
             </form>
+            <button
+                id="saveWebcamAnalysisButtonUpload"
+                class="bg-indigo-600 text-white p-3 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                disabled>
+                Enregistrer les résultats
+            </button>
         </div>
 
         <div id="webcamSection" class="hidden">
@@ -41,21 +54,41 @@
                 <button id="stopWebcamButton" class="bg-red-600 text-white p-3 rounded-md font-semibold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors" disabled>
                     Arrêter l'Analyse Webcam
                 </button>
+                <button
+                    id="saveWebcamAnalysisButton"
+                    class="hidden bg-indigo-600 text-white p-3 rounded-md font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                    disabled>
+                    Afficher les résultats
+                </button>
             </div>
+
             <div id="liveVideoContainer" class="video-container mt-4 mb-8 hidden">
                 <div class="video-aspect-ratio">
                     <video id="webcamVideo" autoplay muted playsinline class="rounded-lg"></video>
                     <canvas id="webcamAnalysisCanvas" class="rounded-lg"></canvas>
                 </div>
+
             </div>
+
+            <div id="questions" class="hidden text-center text-gray-700 text-lg font-medium">
+                Question : <span id="currentQuestion" class="text-indigo-600">N/A</span>
+                <br>
+                <button id="nextQuestionButton" class="mt-3 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 hidden">Suivant</button>
+            </div>            
+
             <div id="liveEmotionFeedback" class="hidden text-center text-gray-700 text-lg font-medium">
                 Émotion détectée : <span id="currentEmotion" class="text-indigo-600">N/A</span>
             </div>
-            <button id="saveWebcamAnalysisButton" class="bg-red-600 text-white p-3 rounded-md font-semibold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors" disabled>
-                Enregistrer les résultats
-            </button>
-        </div>
 
+            <div id="liveTranscription" class="mt-4 p-3 bg-gray-100 text-gray-800 rounded-md text-sm max-w-xl">
+                <strong>Transcription en direct :</strong> <br>
+            </div>
+
+            <div id="finalAnalysisSummary" class="hidden" style="padding: 1em; background-color: #f0f0f0; border-radius: 8px; margin-top: 1em;"></div>
+
+            
+           
+        </div>
 
         <div id="loadingMessage" class="hidden mt-6 flex items-center justify-center text-indigo-600 font-medium">
             <div class="spinner mr-3"></div>
@@ -94,7 +127,14 @@
                 <p id="overallSentiment" class="text-gray-800 leading-relaxed"></p>
                 <div id="rawSentimentScores" class="text-gray-700 text-sm mt-2"></div>
             </div>
+
+            <div id="audioEmotionResult" class="mb-6 p-4 bg-gray-50 rounded-md">
+                <h3 class="text-xl font-semibold text-gray-700 mb-2">4. Analyse des Émotions Audio (XGBoost)</h3>
+                <p id="audioEmotionSummary" class="text-gray-800 leading-relaxed"></p>
+                <div id="rawAudioEmotionScores" class="text-gray-700 text-sm mt-2"></div>
+            </div>
         </div>
+        
     </div>
 
     <script src="/static/js/webcamAnalysis.js"></script>
@@ -102,6 +142,253 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             checkSession();
+            
+            const uploadForm = document.getElementById('uploadForm');
+            const videoFile = document.getElementById('videoFile');
+            const analyzeButton = document.getElementById('analyzeButton');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const errorMessage = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            const resultsSummary = document.getElementById('resultsSummary');
+            const transcriptionText = document.getElementById('transcriptionText');
+            const facialEmotionsSummary = document.getElementById('facialEmotionsSummary');
+            const overallSentiment = document.getElementById('overallSentiment');
+            const rawSentimentScores = document.getElementById('rawSentimentScores');
+            const audioEmotionSummary = document.getElementById('audioEmotionSummary'); // NEW
+            const rawAudioEmotionScores = document.getElementById('rawAudioEmotionScores'); // NEW
+            const uploadedVideoDisplayContainer = document.getElementById('uploadedVideoDisplayContainer');
+            const interviewVideo = document.getElementById('interviewVideo');
+            const analysisCanvas = document.getElementById('analysisCanvas');
+            const saveWebcamAnalysisButtonUpload = document.getElementById('saveWebcamAnalysisButtonUpload');
+            
+            let currentAnalysisData = null; // Store analysis data for saving
+
+            uploadForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                
+                const file = videoFile.files[0];
+                if (!file) {
+                    alert('Veuillez sélectionner un fichier vidéo.');
+                    return;
+                }
+
+                loadingMessage.classList.remove('hidden');
+                errorMessage.classList.add('hidden');
+                resultsSummary.classList.add('hidden');
+                uploadedVideoDisplayContainer.classList.add('hidden');
+                saveWebcamAnalysisButtonUpload.disabled = true;
+
+
+                const formData = new FormData();
+                formData.append('video', file);
+
+                try {
+                    const response = await fetch('/analyze-interview-video', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Erreur lors de l\'analyse vidéo.');
+                    }
+
+                    const data = await response.json();
+                    currentAnalysisData = data; // Store the data
+                    saveWebcamAnalysisButtonUpload.disabled = false;
+
+
+                    // Display results
+                    transcriptionText.textContent = data.transcription.text;
+
+                    facialEmotionsSummary.innerHTML = `Durée analysée: ${data.video_emotions.video_duration_seconds} secondes<br>
+                                                       Images analysées: ${data.video_emotions.frames_analyzed} images.<br>
+                                                       Détails par image : (voir la vidéo analysée ci-dessous pour le détail visuel).`;
+
+                    overallSentiment.innerHTML = `Sentiment dominant: <span class="font-semibold">${data.overall_text_sentiment.overall_sentiment}</span> (Confiance: ${(data.overall_text_sentiment.confidence_score * 100).toFixed(2)}%)`;
+                    rawSentimentScores.innerHTML = 'Scores bruts: ' + Object.entries(data.overall_text_sentiment.raw_scores)
+                        .map(([key, value]) => `${key}: ${(value * 100).toFixed(2)}%`)
+                        .join(', ');
+
+                    // NEW: Display Audio Emotion Results
+                    if (data.xgb_audio_emotion && data.xgb_audio_emotion.dominant_emotion) {
+                        audioEmotionSummary.innerHTML = `Émotion audio dominante: <span class="font-semibold">${data.xgb_audio_emotion.dominant_emotion}</span> (Confiance: ${(data.xgb_audio_emotion.confidence * 100).toFixed(2)}%)`;
+                        if (Object.keys(data.xgb_audio_emotion.all_scores).length > 0) {
+                            rawAudioEmotionScores.innerHTML = 'Scores bruts: ' + Object.entries(data.xgb_audio_emotion.all_scores)
+                                .map(([key, value]) => `${key}: ${(value * 100).toFixed(2)}%`)
+                                .join(', ');
+                        } else {
+                            rawAudioEmotionScores.innerHTML = 'Scores bruts non disponibles.';
+                        }
+                    } else {
+                        audioEmotionSummary.textContent = "Analyse des émotions audio non disponible ou a échoué.";
+                        rawAudioEmotionScores.textContent = "";
+                    }
+
+
+                    resultsSummary.classList.remove('hidden');
+
+                    // Display the uploaded video with analysis overlay
+                    const videoURL = URL.createObjectURL(file);
+                    interviewVideo.src = videoURL;
+                    uploadedVideoDisplayContainer.classList.remove('hidden');
+                    
+                    let currentFrameIndex = 0;
+                    let lastTimestamp = 0;
+                    const FPS = 1; // Assuming one frame per second was analyzed
+
+                    interviewVideo.addEventListener('timeupdate', () => {
+                        const currentTime = Math.floor(interviewVideo.currentTime);
+                        if (currentTime !== lastTimestamp) {
+                            lastTimestamp = currentTime;
+                            const frameData = data.video_emotions.emotions_timeline.find(
+                                frame => frame.timestamp_seconds === currentTime
+                            );
+                            
+                            const context = analysisCanvas.getContext('2d');
+                            context.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
+                            
+                            if (frameData && frameData.detected_faces.length > 0) {
+                                // Scale canvas to video size
+                                analysisCanvas.width = interviewVideo.videoWidth;
+                                analysisCanvas.height = interviewVideo.videoHeight;
+                                
+                                frameData.detected_faces.forEach(face => {
+                                    const { x, y, width, height } = face.bounding_box;
+                                    context.strokeStyle = 'red';
+                                    context.lineWidth = 2;
+                                    context.strokeRect(x, y, width, height);
+
+                                    // Display dominant emotion
+                                    const dominantEmotion = Object.keys(face.emotions).reduce((a, b) => face.emotions[a] > face.emotions[b] ? a : b);
+                                    context.fillStyle = 'red';
+                                    context.font = '20px Arial';
+                                    context.fillText(dominantEmotion, x, y - 10);
+
+                                    // Display dominant sentiment (if available)
+                                    if (face.sentiments && Object.keys(face.sentiments).length > 0) {
+                                        const dominantSentiment = Object.keys(face.sentiments).reduce((a, b) => face.sentiments[a] > face.sentiments[b] ? a : b);
+                                        context.fillStyle = 'blue';
+                                        context.font = '20px Arial';
+                                        context.fillText(dominantSentiment, x, y + height + 20);
+                                    }
+                                });
+                            }
+                        }
+                    });
+
+                } catch (error) {
+                    errorMessage.classList.remove('hidden');
+                    errorText.textContent = error.message;
+                    console.error('Error during video analysis:', error);
+                } finally {
+                    loadingMessage.classList.add('hidden');
+                }
+            });
+
+            saveWebcamAnalysisButtonUpload.addEventListener('click', async () => {
+                if (!currentAnalysisData) {
+                    alert("No analysis data to save. Please analyze a video first.");
+                    return;
+                }
+
+                const userToken = localStorage.getItem('token');
+                const sessionId = localStorage.getItem('session_id');
+
+                if (!userToken || !sessionId) {
+                    alert("User not logged in or session ID not found. Cannot save data.");
+                    window.location.href = "/static/login.html"; // Redirect to login
+                    return;
+                }
+
+                // Prepare data for saving
+                const emotionTimelineFormatted = currentAnalysisData.video_emotions.emotions_timeline.map(frame => {
+                    const timestamp = frame.timestamp_seconds;
+                    const faces = frame.detected_faces.map(face => {
+                        const dominantEmotion = Object.keys(face.emotions).reduce((a, b) => face.emotions[a] > face.emotions[b] ? a : b, 'neutral');
+                        const dominantSentiment = face.sentiments ? Object.keys(face.sentiments).reduce((a, b) => face.sentiments[a] > face.sentiments[b] ? a : b, 'neutral') : 'N/A';
+                        return { emotion: dominantEmotion, sentiment: dominantSentiment };
+                    });
+                    // For simplicity, take the first face's dominant emotion/sentiment for the frame's overall if multiple.
+                    // Or, you can aggregate them more complexly.
+                    const frameEmotion = faces.length > 0 ? faces[0].emotion : 'N/A';
+                    const frameSentiment = faces.length > 0 ? faces[0].sentiment : 'N/A';
+                    return { timestamp, emotion: frameEmotion, sentiment: frameSentiment };
+                });
+
+                // Calculate overall dominant emotion and sentiment for the entire video
+                let allEmotions = {};
+                let allSentiments = {};
+                currentAnalysisData.video_emotions.emotions_timeline.forEach(frame => {
+                    frame.detected_faces.forEach(face => {
+                        const dominantEmotion = Object.keys(face.emotions).reduce((a, b) => face.emotions[a] > face.emotions[b] ? a : b);
+                        allEmotions[dominantEmotion] = (allEmotions[dominantEmotion] || 0) + 1;
+                        if (face.sentiments) {
+                            const dominantSentiment = Object.keys(face.sentiments).reduce((a, b) => face.sentiments[a] > face.sentiments[b] ? a : b);
+                            allSentiments[dominantSentiment] = (allSentiments[dominantSentiment] || 0) + 1;
+                        }
+                    });
+                });
+
+                const dominantOverallEmotion = Object.keys(allEmotions).length > 0 ? Object.keys(allEmotions).reduce((a, b) => allEmotions[a] > allEmotions[b] ? a : b) : 'N/A';
+                const dominantOverallSentiment = Object.keys(allSentiments).length > 0 ? Object.keys(allSentiments).reduce((a, b) => allSentiments[a] > allSentiments[b] ? a : b) : 'N/A';
+
+
+                const payload = {
+                    session_id: parseInt(sessionId),
+                    dominant_emotion: dominantOverallEmotion,
+                    emotion_timeline: emotionTimelineFormatted,
+                    dominant_sentiment: dominantOverallSentiment,
+                    sentiment_timeline: emotionTimelineFormatted.map(entry => ({ timestamp: entry.timestamp, sentiment: entry.sentiment })), // Re-using for simplicity
+                    duration: currentAnalysisData.video_emotions.video_duration_seconds,
+                    frames: currentAnalysisData.video_emotions.frames_analyzed
+                };
+
+                try {
+                    const response = await fetch('/api/save-webcam-analysis', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${userToken}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Erreur lors de l\'enregistrement des résultats.');
+                    }
+
+                    alert("Résultats de l'analyse enregistrés avec succès !");
+                } catch (error) {
+                    alert(`Erreur lors de l'enregistrement des résultats: ${error.message}`);
+                    console.error("Error saving analysis:", error);
+                }
+            });
+
+            // Tab switching logic (already there, just ensuring it stays)
+            const uploadTab = document.getElementById('uploadTab');
+            const webcamTab = document.getElementById('webcamTab');
+            const uploadSection = document.getElementById('uploadSection');
+            const webcamSection = document.getElementById('webcamSection');
+
+            uploadTab.addEventListener('click', () => {
+                uploadSection.classList.remove('hidden');
+                webcamSection.classList.add('hidden');
+                uploadTab.classList.add('border-indigo-600', 'text-indigo-600');
+                uploadTab.classList.remove('border-gray-200', 'text-gray-500', 'hover:text-gray-700');
+                webcamTab.classList.remove('border-indigo-600', 'text-indigo-600');
+                webcamTab.classList.add('border-gray-200', 'text-gray-500', 'hover:text-gray-700');
+            });
+
+            webcamTab.addEventListener('click', () => {
+                uploadSection.classList.add('hidden');
+                webcamSection.classList.remove('hidden');
+                webcamTab.classList.add('border-indigo-600', 'text-indigo-600');
+                webcamTab.classList.remove('border-gray-200', 'text-gray-500', 'hover:text-gray-700');
+                uploadTab.classList.remove('border-indigo-600', 'text-indigo-600');
+                uploadTab.classList.add('border-gray-200', 'text-gray-500', 'hover:text-gray-700');
+            });
         });
     </script>
 </body>

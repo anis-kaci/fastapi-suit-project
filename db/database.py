@@ -1,6 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
+from fastapi import Depends
 
 # Variables séparées
 DB_USER = "root"
@@ -26,3 +28,6 @@ try:
         print("✅ Connexion réussie à la base de données.")
 except OperationalError as e:
     print("❌ Erreur de connexion à la base de données :", e)
+
+
+

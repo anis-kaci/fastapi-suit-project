@@ -6,6 +6,9 @@ const WS_BASE_URL = 'ws://127.0.0.1:8000';
 let emotionTimeline = [];         // [{ timestamp, emotion, sentiment }]
 let framesAnalyzed = 0;
 let startTime = null;
+let liveTextBuffer = "";
+let lastTextEmotionResult = null;
+let lastTextSentimentResult = null;
 
 
 
@@ -24,12 +27,13 @@ const analysisCanvas = document.getElementById('analysisCanvas');
 const ctx = analysisCanvas.getContext('2d');
 let currentAnalysisData = null; // Stores the full analysis data from the API
 let animationFrameId = null; // For requestAnimationFrame on uploaded video
-
+const sessionId = getSessionId();
 
 // --- Elements for Webcam Analysis ---
 const startWebcamButton = document.getElementById('startWebcamButton');
 const stopWebcamButton = document.getElementById('stopWebcamButton');
 const saveWebcamAnalysisButton = document.getElementById('saveWebcamAnalysisButton');
+const saveWebcamAnalysisButtonUpload = document.getElementById('saveWebcamAnalysisButtonUpload')
 const liveVideoContainer = document.getElementById('liveVideoContainer');
 const webcamVideo = document.getElementById('webcamVideo');
 const webcamAnalysisCanvas = document.getElementById('webcamAnalysisCanvas');
@@ -51,6 +55,13 @@ const transcriptionTextElem = document.getElementById('transcriptionText');
 const facialEmotionsSummaryElem = document.getElementById('facialEmotionsSummary');
 const overallSentimentElem = document.getElementById('overallSentiment');
 const rawSentimentScoresElem = document.getElementById('rawSentimentScores');
+
+const resultsSummaryDivLive = document.getElementById('resultsSummaryLive');
+//const transcriptionTextElemLive = document.getElementById('transcriptionText'); // seulement si tu veux afficher la transcription quelque part
+const facialEmotionsSummaryElemLive = document.getElementById('facialEmotionsSummaryLive');
+const overallSentimentElemLive = document.getElementById('overallSentimentLive');
+const rawSentimentScoresElemLive = document.getElementById('rawSentimentScoresLive');
+
 // recuperer le session id
 
 function getSessionId() {
@@ -91,6 +102,7 @@ function switchTab(activeTabId) {
 uploadTab.addEventListener('click', () => switchTab('uploadTab'));
 webcamTab.addEventListener('click', () => switchTab('webcamTab'));
 
+
 function hideAllAnalysisDisplays() {
     loadingMessage.classList.add('hidden');
     errorMessage.classList.add('hidden');
@@ -119,7 +131,8 @@ function hideError() {
     errorText.textContent = '';
 }
 
-// --- Uploaded Video Analysis Logic ---
+// #########--- Uploaded Video Analysis Logic ---#########
+
 function setupUploadedVideoAndCanvas(videoFileUrl) {
     uploadedVideoDisplayContainer.classList.remove('hidden');
     interviewVideo.src = videoFileUrl;
@@ -143,7 +156,11 @@ function setupUploadedVideoAndCanvas(videoFileUrl) {
         cancelAnimationFrame(animationFrameId);
         ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
     };
+    saveWebcamAnalysisButtonUpload.disabled = false;
 }
+
+
+
 
 function drawUploadedVideoAnalysisLoop() {
     ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
@@ -296,11 +313,21 @@ uploadForm.addEventListener('submit', async (event) => {
         }
 
         currentAnalysisData = await response.json(); // Store the full analysis data
-        
+        // Enregistrement automatique de currentAnalysisData dans un fichier JSON
+        const analysisBlob = new Blob([JSON.stringify(currentAnalysisData, null, 2)], { type: 'application/json' });
+        const analysisUrl = URL.createObjectURL(analysisBlob);
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = analysisUrl;
+        downloadLink.download = 'analysis_result.json';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(analysisUrl); // Libère la mémoire
         const videoFileUrl = URL.createObjectURL(videoFile);
         setupUploadedVideoAndCanvas(videoFileUrl);
 
-        displayResultsSummary(currentAnalysisData);
+        //displayResultsSummary(currentAnalysisData);
 
     } catch (error) {
         console.error('Error during API call:', error);
@@ -310,6 +337,106 @@ uploadForm.addEventListener('submit', async (event) => {
         analyzeButton.disabled = false;
     }
 });
+
+// ####### save reults from uploaded video #######
+
+async function saveResults(currentAnalysisData, session_id) {
+    try {
+        // 📌 Sauvegarde de la transcription
+        const transcriptionText = currentAnalysisData.transcription;
+      if (transcriptionText) {
+        await fetch('/api/save-transcription', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            session_id: session_id,
+            transcription: transcriptionText
+          })
+        });
+        console.log('✅ Transcription saved');
+      }
+    
+        // 📌 Sauvegarde de l’analyse faciale
+        const videoEmotions = currentAnalysisData.video_emotions;
+        if (videoEmotions?.emotions_timeline) {
+        const timeline = videoEmotions.emotions_timeline;
+
+        const computeDominant = (timeline, key) => {
+            const totals = {};
+            timeline.forEach(frame => {
+            frame.detected_faces.forEach(face => {
+                const values = face[key];
+                for (const label in values) {
+                totals[label] = (totals[label] || 0) + values[label];
+                }
+            });
+            });
+            return Object.entries(totals).reduce((a, b) => a[1] > b[1] ? a : b, ['', 0])[0];
+        };
+
+        const dominantEmotion = computeDominant(timeline, 'emotions');
+        const dominantSentiment = computeDominant(timeline, 'sentiments');
+
+        // 🔧 Transformer le timeline au bon format
+        const transformedTimeline = timeline.map(frame => ({
+            timestamp: Math.round(frame.timestamp_seconds * 1000),
+            detected_faces: frame.detected_faces.map(face => ({
+            emotions: face.emotions,
+            sentiments: face.sentiments
+            }))
+        }));
+
+        // 🔄 Recréer l'objet video_emotions avec le nouveau timeline
+        const transformedVideoEmotions = {
+            ...videoEmotions,
+            emotions_timeline: transformedTimeline
+        };
+
+        await fetch('/api/save-facial-emotions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+            session_id: session_id,
+            dominant_emotion: dominantEmotion,
+            dominant_sentiment: dominantSentiment,
+            video_emotions: transformedVideoEmotions.emotions_timeline,
+            duration_seconds: videoEmotions.video_duration_seconds,
+            frames: videoEmotions.frames_analyzed
+            })
+        });
+
+        console.log('✅ Facial analysis saved');
+        }
+        
+    
+        // 📌 Sauvegarde de l’analyse des sentiments du texte
+        const textSentiment = currentAnalysisData.overall_text_sentiment;
+        if (textSentiment) {
+        await fetch('/api/save-text-sentiment', {
+            method: 'POST',
+            headers: {
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+            session_id: session_id,
+            sentiment_label: textSentiment.overall_sentiment,
+            confidence_score: textSentiment.confidence_score,
+            raw_scores: textSentiment.raw_scores
+            })
+        });
+    
+        console.log('✅ Text sentiment saved');
+        }
+    
+    } catch (error) {
+        console.error('❌ Error saving results:', error);
+    }
+}
+         
+      
+  
 
 // helper function to save some data
 
@@ -334,12 +461,119 @@ function extractTopEmotionSentiment(faces) {
 
 
 // --- Webcam Analysis Logic (UPDATED FOR WEBSOCKET) ---
+
 startWebcamButton.addEventListener('click', startWebcamAnalysis);
 stopWebcamButton.addEventListener('click', stopWebcamAnalysis);
 saveWebcamAnalysisButton.addEventListener('click', saveWebcamAnalysis);
 
-async function startWebcamAnalysis() {
-    console.log('analyse en cours hihihi ...');
+let audioRecorder;
+let audioChunks = [];
+
+
+async function startAudioTranscriptionRecorder(fullStream) {
+    const audioTracks = fullStream.getAudioTracks();
+    const audioStream = new MediaStream(audioTracks);
+
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "";
+
+    if (!mimeType) {
+        console.error("Aucun format audio compatible trouvé.");
+        return;
+    }
+
+    const recorder = new MediaRecorder(audioStream, { mimeType });
+
+    let chunks = [];
+
+    recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+            console.log("🎤 Nouveau chunk audio reçu :", event.data);
+            chunks.push(event.data);
+        } else {
+            console.warn("📭 Chunk vide ignoré");
+        }
+    };
+
+    // Toutes les 5 secondes, on envoie le blob complet au serveur
+    setInterval(async () => {
+        if (chunks.length === 0) return;
+
+        const completeBlob = new Blob(chunks, { type: mimeType });
+        chunks = []; // reset les chunks
+
+        const formData = new FormData();
+        formData.append("file", completeBlob, "audio.webm");
+
+        try {
+            const res = await fetch("/transcribe_real_time", {
+                method: "POST",
+                body: formData
+            });
+
+            if (!res.ok) {
+                const errText = await res.text();
+                console.error("❌ Erreur HTTP côté serveur :", errText);
+                return;
+            }
+
+            const json = await res.json();
+            //document.getElementById("liveTranscription").textContent += " " + json.text;
+            displayLiveTranscription(json.text)
+            liveTextBuffer += " " + json.text; 
+        } catch (e) {
+            console.error("❌ Transcription échouée :", e);
+        }
+    }, 5000);
+
+    recorder.start();  // démarrage sans intervalle pour chunk
+    console.log("🎙️ Enregistrement audio démarré, envoi toutes les 5 secondes");
+}
+
+
+async function analyzeLiveTextSummary() {
+    if (!liveTextBuffer.trim()) {
+        console.warn("⛔ Aucun texte à analyser");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("text", liveTextBuffer);
+
+    try {
+        const [sentimentRes, emotionRes] = await Promise.all([
+            fetch("/analyze-text-sentiment", {
+                method: "POST",
+                body: formData
+            }),
+            fetch("/analyze-text-emotion", {
+                method: "POST",
+                body: formData
+            })
+        ]);
+
+        if (!sentimentRes.ok || !emotionRes.ok) {
+            console.error("Erreur d’analyse de texte", await sentimentRes.text(), await emotionRes.text());
+            return;
+        }
+
+        const sentimentJson = await sentimentRes.json();
+        const emotionJson = await emotionRes.json();
+
+        lastTextSentimentResult = sentimentJson;
+        lastTextEmotionResult = emotionJson;
+
+
+
+    } catch (err) {
+        console.error("Erreur d’envoi vers les endpoints d’analyse :", err);
+    }
+}
+
+
+/*async function startWebcamAnalysis() {
+    console.log("🎬 Analyse en cours...");
 
     hideError();
     hideAllAnalysisDisplays(); 
@@ -347,30 +581,123 @@ async function startWebcamAnalysis() {
     liveEmotionFeedback.classList.remove('hidden');
     startWebcamButton.disabled = true;
     stopWebcamButton.disabled = false;
-    isAnalyzingWebcam = true; // Set flag for ongoing analysis
+    isAnalyzingWebcam = true;
     startTime = Date.now();
     emotionTimeline = [];
     framesAnalyzed = 0;
 
     try {
-        // Request both video and audio streams
-        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); 
+        // Demande audio + vidéo
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+
+        console.log("🎥 Webcam et 🎤 micro accessibles.");
+        console.log("Pistes audio :", mediaStream.getAudioTracks());
+        console.log("Pistes vidéo :", mediaStream.getVideoTracks());
+
+        // ✅ Appel correct avec mediaStream
+        startAudioTranscriptionRecorder(mediaStream);
+
+        // Vidéo live
         webcamVideo.srcObject = mediaStream;
         webcamVideo.onloadedmetadata = () => {
             webcamAnalysisCanvas.width = webcamVideo.videoWidth;
             webcamAnalysisCanvas.height = webcamVideo.videoHeight;
+
             const aspectRatio = (webcamVideo.videoHeight / webcamVideo.videoWidth) * 100;
             document.querySelector('#liveVideoContainer .video-aspect-ratio').style.paddingBottom = `${aspectRatio}%`;
+
             webcamVideo.play();
-            setupWebSocketAnalysis(); // Initiate WebSocket connection
+            setupWebSocketAnalysis(); // Analyse temps réel via WebSocket
         };
     } catch (err) {
-        console.error("Erreur d'accès à la webcam : ", err);
-        displayError("Impossible d'accéder à la webcam. Assurez-vous d'avoir autorisé l'accès et qu'aucune autre application ne l'utilise.");
-        stopWebcamAnalysis(); // Reset buttons and state
+        console.error("❌ Erreur d'accès webcam/micro :", err);
+        displayError("Impossible d'accéder à la webcam ou au micro. Vérifiez les autorisations.");
+        stopWebcamAnalysis();
+    }
+}*/
+let questions = [];
+let currentQuestionIndex = 0;
+
+// Références
+const currentQuestionSpan = document.getElementById("currentQuestion");
+const questionsDiv = document.getElementById("questions");
+const nextQuestionButton = document.getElementById("nextQuestionButton"); // ➤ Tu dois ajouter ce bouton dans le HTML
+
+async function startWebcamAnalysis() {
+    console.log("🎬 Analyse en cours...");
+
+    hideError();
+    hideAllAnalysisDisplays();
+    liveVideoContainer.classList.remove('hidden');
+    liveEmotionFeedback.classList.remove('hidden');
+    startWebcamButton.disabled = true;
+    stopWebcamButton.disabled = false;
+    isAnalyzingWebcam = true;
+    startTime = Date.now();
+    emotionTimeline = [];
+    framesAnalyzed = 0;
+
+    // 🎯 NOUVELLE PARTIE ➤ Récupérer les questions
+    try {
+        const res = await fetch('/questions/');
+        if (!res.ok) throw new Error("Erreur de chargement des questions");
+        questions = await res.json();
+        currentQuestionIndex = 0;
+
+        if (questions.length > 0) {
+            questionsDiv.classList.remove('hidden');
+            currentQuestionSpan.textContent = questions[0].question_text;
+            nextQuestionButton.classList.remove('hidden');
+            nextQuestionButton.disabled = false;
+        } else {
+            currentQuestionSpan.textContent = "Aucune question disponible.";
+        }
+    } catch (err) {
+        console.error("❌ Erreur de récupération des questions :", err);
+        displayError("Impossible de charger les questions.");
+    }
+
+    // 🎥 Vidéo/audio
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        webcamVideo.srcObject = mediaStream;
+        webcamVideo.onloadedmetadata = () => {
+            webcamAnalysisCanvas.width = webcamVideo.videoWidth;
+            webcamAnalysisCanvas.height = webcamVideo.videoHeight;
+
+            const aspectRatio = (webcamVideo.videoHeight / webcamVideo.videoWidth) * 100;
+            document.querySelector('#liveVideoContainer .video-aspect-ratio').style.paddingBottom = `${aspectRatio}%`;
+
+            webcamVideo.play();
+            startAudioTranscriptionRecorder(mediaStream);
+            setupWebSocketAnalysis();
+        };
+    } catch (err) {
+        console.error("❌ Erreur d'accès webcam/micro :", err);
+        displayError("Impossible d'accéder à la webcam ou au micro. Vérifiez les autorisations.");
+        stopWebcamAnalysis();
     }
 }
 
+// ➤ Gérer clic sur “Suivant”
+nextQuestionButton.addEventListener("click", () => {
+    currentQuestionIndex++;
+    if (currentQuestionIndex < questions.length) {
+        currentQuestionSpan.textContent = questions[currentQuestionIndex].question_text;
+    } else {
+        currentQuestionSpan.textContent = "✅ Fin des questions.";
+        nextQuestionButton.disabled = true;
+    }
+});
+
+
+
+function displayLiveTranscription(text) {
+    const transcriptionBox = document.getElementById("liveTranscription");
+    if (transcriptionBox) {
+        transcriptionBox.textContent += text + " ";
+    }
+}
 
 
 /// helper function to get dominant values:
@@ -382,58 +709,23 @@ function getDominantValue(arr) {
 }
 
 
-/*async function stopWebcamAnalysis() {
-    console.log('✅ the analysis are stopping now !!!');
-    const sessionId = getSessionId();
-    if (!sessionId) {
-        console.error("❌ session_id non défini !");
+
+
+let isStopping = false;
+
+async function stopWebcamAnalysis() {
+    
+    console.log('stopWebcamAnalysis called');
+    if (isStopping) {
+        console.warn('⛔ Already stopping...');
         return;
     }
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        webcamVideo.srcObject = null;
-    }
-    if (webcamAnalysisInterval) {
-        clearInterval(webcamAnalysisInterval);
-        webcamAnalysisInterval = null;
-    }
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close(); // Close WebSocket connection
-    }
-    webcamCtx.clearRect(0, 0, webcamAnalysisCanvas.width, webcamAnalysisCanvas.height); // Clear canvas
-    liveVideoContainer.classList.add('hidden');
-    liveEmotionFeedback.classList.add('hidden');
-    startWebcamButton.disabled = false;
-    stopWebcamButton.disabled = true;
-    isAnalyzingWebcam = false;
-    currentEmotionSpan.textContent = 'N/A';
-
-    const durationSec = (Date.now() - startTime) / 1000;
-    const dominantEmotion = getDominantValue(emotionTimeline.map(e => e.emotion));
-    const dominantSentiment = getDominantValue(emotionTimeline.map(e => e.sentiment));
-
-    try {
-        await fetch('/api/save-webcam-analysis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                session_id: sessionId, 
-                dominant_emotion: dominantEmotion,
-                emotion_timeline: emotionTimeline,
-                dominant_sentiment: dominantSentiment,
-                sentiment_timeline: emotionTimeline.map(e => ({ timestamp: e.timestamp, sentiment: e.sentiment })),
-                duration_seconds: durationSec,
-                frames: framesAnalyzed
-            })
-        });
-        console.log('✅ Analyse sauvegardée');
-    } catch (err) {
-        console.error('❌ Erreur sauvegarde :', err);
-    }
-}*/
-// Fonction qui arrête l'analyse ET la vidéo (mais sans sauvegarder)
-function stopWebcamAnalysis() {
+    isStopping = true;
+    console.log('stopWebcamAnalysis called');
     console.log('✅ The analysis are stopping now !!!');
+
+    stopWebcamButton.disabled = true;
+
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
         webcamVideo.srcObject = null;
@@ -445,19 +737,88 @@ function stopWebcamAnalysis() {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
     }
+    if (typeof window._stopAudioRecorder === 'function') {
+        window._stopAudioRecorder();
+    }    
+    
     webcamCtx.clearRect(0, 0, webcamAnalysisCanvas.width, webcamAnalysisCanvas.height);
     liveVideoContainer.classList.add('hidden');
     liveEmotionFeedback.classList.add('hidden');
     startWebcamButton.disabled = false;
-    stopWebcamButton.disabled = true;
-    saveWebcamAnalysisButton.disabled = false;  // Activer bouton sauvegarde
-    isAnalyzingWebcam = false;
+    console.log('✅ showing the button now now !!!');
+    saveWebcamAnalysisButton.classList.remove('hidden');
+    saveWebcamAnalysisButton.disabled = false;
     currentEmotionSpan.textContent = 'N/A';
+    console.log('✅ dayen non ??!!!');
+
+    setTimeout(() => {
+        isStopping = false;
+    }, 1000);
+
 }
 
+
+
 // Fonction qui sauvegarde les données d'analyse sur le serveur
+
+/*async function saveWebcamAnalysis() {
+    
+    if (!sessionId) {
+        console.error("❌ session_id non défini !");
+        return;
+    }
+
+    if (emotionTimeline.length === 0) {
+        console.error("❌ Pas de données à sauvegarder !");
+        return;
+    }
+    showFinalEmotionAnalysisSummary()
+
+    const durationSec = (Date.now() - startTime) / 1000;
+
+    // Fonction de calcul de la dominante à partir des scores cumulés
+    const computeDominant = (timeline, key) => {
+        const totals = {};
+        timeline.forEach(frame => {
+            frame.detected_faces?.forEach(face => {
+                const values = face[key];
+                for (const label in values) {
+                    totals[label] = (totals[label] || 0) + values[label];
+                }
+            });
+        });
+        return Object.entries(totals).reduce(
+            (a, b) => a[1] > b[1] ? a : b,
+            ['', 0]
+        )[0];
+    };
+
+    // Calculer les dominantes à partir de tous les visages
+    const dominantEmotion = computeDominant(emotionTimeline, 'emotions');
+    const dominantSentiment = computeDominant(emotionTimeline, 'sentiments');
+
+    try {
+        await fetch('/api/save-webcam-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: sessionId,
+                dominant_emotion: dominantEmotion,
+                dominant_sentiment: dominantSentiment,
+                video_emotions: emotionTimeline, // toute la timeline dans un seul champ JSON
+                duration_seconds: durationSec,
+                frames_analyzed: framesAnalyzed
+            })
+        });
+        console.log('✅ Analyse sauvegardée');
+        saveWebcamAnalysisButton.disabled = true;
+    } catch (err) {
+        console.error('❌ Erreur sauvegarde :', err);
+    }
+    
+}*/
+
 async function saveWebcamAnalysis() {
-    const sessionId = getSessionId();
     if (!sessionId) {
         console.error("❌ session_id non défini !");
         return;
@@ -468,70 +829,53 @@ async function saveWebcamAnalysis() {
         return;
     }
 
+    showFinalEmotionAnalysisSummary();
+    const token = localStorage.getItem('authToken');
     const durationSec = (Date.now() - startTime) / 1000;
-    const dominantEmotion = getDominantValue(emotionTimeline.map(e => e.emotion));
-    const dominantSentiment = getDominantValue(emotionTimeline.map(e => e.sentiment));
+
+    // Calcul des dominantes (émotions + sentiments)
+    const computeDominant = (timeline, key) => {
+        const totals = {};
+        timeline.forEach(frame => {
+            frame.detected_faces?.forEach(face => {
+                const values = face[key];
+                for (const label in values) {
+                    totals[label] = (totals[label] || 0) + values[label];
+                }
+            });
+        });
+        return Object.entries(totals).reduce(
+            (a, b) => a[1] > b[1] ? a : b,
+            ['', 0]
+        )[0];
+    };
+
+    const dominantEmotion = computeDominant(emotionTimeline, 'emotions');
+    const dominantSentiment = computeDominant(emotionTimeline, 'sentiments');
+
 
     try {
+        // Sauvegarde de l'analyse webcam habituelle
         await fetch('/api/save-webcam-analysis', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
                 dominant_emotion: dominantEmotion,
-                emotion_timeline: emotionTimeline,
                 dominant_sentiment: dominantSentiment,
-                sentiment_timeline: emotionTimeline.map(e => ({ timestamp: e.timestamp, sentiment: e.sentiment })),
+                video_emotions: emotionTimeline,
                 duration_seconds: durationSec,
-                frames: framesAnalyzed
+                frames_analyzed: framesAnalyzed
             })
         });
-        console.log('✅ Analyse sauvegardée');
-        saveWebcamAnalysisButton.disabled = true; // désactiver bouton sauvegarde après réussite
+
+
     } catch (err) {
         console.error('❌ Erreur sauvegarde :', err);
     }
 }
 
 
-/*async function stopWebcamAnalysis() {
-    const endTime = Date.now();
-    const durationSeconds = (endTime - startTime) / 1000;
-
-    const dominantEmotion = getDominantValue(emotionTimeline.map(e => e.emotion));
-    const dominantSentiment = getDominantValue(emotionTimeline.map(e => e.sentiment));
-
-    const sentimentTimeline = emotionTimeline.map(e => ({
-        timestamp: e.timestamp,
-        sentiment: e.sentiment
-    }));
-
-    const payload = {
-        session_id: currentSessionId,  // À remplacer par ta vraie variable de session
-        dominant_emotion: dominantEmotion,
-        emotion_timeline: emotionTimeline,
-        dominant_sentiment: dominantSentiment,
-        sentiment_timeline: sentimentTimeline,
-        duration: durationSeconds,
-        frames: framesAnalyzed
-    };
-
-    try {
-        const response = await fetch("/api/save-webcam-analysis", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.detail);
-        console.log("✅ Analyse sauvegardée :", result.message);
-    } catch (error) {
-        console.error("❌ Erreur lors de la sauvegarde :", error.message);
-    }
-}*/
 
 function setupWebSocketAnalysis() {
     // Establish WebSocket connection
@@ -547,21 +891,21 @@ function setupWebSocketAnalysis() {
         try {
             const analysisData = JSON.parse(event.data);
             console.log("Received real-time analysis:", analysisData); // For debugging: CHECK THIS OUTPUT!
-
-           // if (analysisData.facial_emotions && Array.isArray(analysisData.facial_emotions.detected_faces)) {
-           //     drawWebcamAnalysisOverlay(analysisData.facial_emotions.detected_faces);
-           //     updateLiveEmotionFeedback(analysisData.facial_emotions.detected_faces);
-           //} else if (analysisData.detail) { // Handle potential error messages from backend
-           //     console.warn("Backend sent an error/info message:", analysisData.detail);
-                // Optionally display a temporary message to the user
-            //}
             if (analysisData.facial_emotions && Array.isArray(analysisData.facial_emotions)) {
+                console.log(analysisData.facial_emotions)
                 drawWebcamAnalysisOverlay(analysisData.facial_emotions);
                 updateLiveEmotionFeedback(analysisData.facial_emotions);
                 // Enregistrement des données
                 const timestamp = Date.now();
-                const { topEmotion, topSentiment } = extractTopEmotionSentiment(analysisData.facial_emotions);
-                emotionTimeline.push({ timestamp, emotion: topEmotion, sentiment: topSentiment });
+                //const { topEmotion, topSentiment } = extractTopEmotionSentiment(analysisData.facial_emotions);
+                //const emotions = analysisData.facial_emotions[0].emotions
+                //const sentiments = analysisData.facial_emotions[0].sentiments
+                const detectedFaces = analysisData.facial_emotions.map(face => ({
+                    emotions: face.emotions,
+                    sentiments: face.sentiments
+                }));
+                //emotionTimeline.push({ timestamp, emotions: emotions, sentiments: sentiments });
+                emotionTimeline.push({ timestamp, detected_faces: detectedFaces });
                 framesAnalyzed++;
             } else if (analysisData.detail) { // Handle potential error messages from backend
                 console.warn("Backend sent an error/info message:", analysisData.detail);
@@ -586,7 +930,7 @@ function setupWebSocketAnalysis() {
         if (isAnalyzingWebcam) { 
             displayError("Connexion à l'analyse en temps réel perdue.");
         }
-        stopWebcamAnalysis(); // Ensure all resources are cleaned up
+        //stopWebcamAnalysis(); // Ensure all resources are cleaned up
     };
 }
 
@@ -853,5 +1197,363 @@ function displayResultsSummary(data) {
     rawSentimentScoresElem.innerHTML += scoresList;
 }
 
+async function showFinalEmotionAnalysisSummary() {
+    const summaryContainer = document.getElementById("finalAnalysisSummary");
+    await analyzeLiveTextSummary()
+    summaryContainer.innerHTML = ""; // reset
+
+    const title = document.createElement("h1");
+    title.textContent = " ***** Résumé Final de l'Analyse *****";
+    summaryContainer.appendChild(title);
+
+    // 📘 Partie 1 : Analyse du texte
+    const textSection = document.createElement("div");
+    let textAnalysis = `<br><br><br><h2>***** Analyse du Texte *****</h2>`;
+
+    if (lastTextSentimentResult) {
+        const sentiment = lastTextSentimentResult.overall_sentiment;
+        const confidence = (lastTextSentimentResult.confidence_score * 100).toFixed(1);
+        textAnalysis += `<p>Le sentiment global exprimé dans le texte est <strong>${sentiment}</strong> (confiance : <strong>${confidence}%</strong>).</p>`;
+
+        textAnalysis += "<p>Répartition des sentiments détectés :</p><ul>";
+        for (const [label, score] of Object.entries(lastTextSentimentResult.raw_scores)) {
+            textAnalysis += `<li>${label.charAt(0).toUpperCase() + label.slice(1)}: ${(score * 100).toFixed(1)}%</li>`;
+        }
+        textAnalysis += "</ul><br>";
+    }
+
+    if (lastTextEmotionResult) {
+        const emotion = lastTextEmotionResult.overall_emotion;
+        const confidence = (lastTextEmotionResult.confidence_score * 100).toFixed(1);
+        textAnalysis += `<p>L'émotion principale détectée dans le discours est <strong>${emotion}</strong> (confiance : <strong>${confidence}%</strong>).</p>`;
+
+        textAnalysis += "<p>Détail des émotions détectées :</p><ul>";
+        for (const [label, score] of Object.entries(lastTextEmotionResult.raw_scores)) {
+            textAnalysis += `<li>${label.charAt(0).toUpperCase() + label.slice(1)}: ${(score * 100).toFixed(1)}%</li>`;
+        }
+        textAnalysis += "</ul><br><br><br>";
+    }
+
+    textSection.innerHTML = textAnalysis;
+    summaryContainer.appendChild(textSection);
+
+    try {
+        const token = localStorage.getItem("authToken");
+        await fetch("/api/save-text-sentiment", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                session_id: sessionId,  // ✅ Assure-toi que cette variable existe et contient l'ID de session
+                sentiment_label: lastTextSentimentResult.overall_sentiment,
+                confidence_score: lastTextSentimentResult.confidence_score,
+                raw_scores: lastTextSentimentResult.raw_scores
+            })
+        });
+    } catch (error) {
+        console.error("❌ Erreur lors de l'enregistrement du sentiment :", error);
+    }
+
+    // 😶‍🌫️ Partie 2 : Analyse faciale synthétique
+    const faceSection = document.createElement("div");
+    faceSection.innerHTML = `<h2>***** Analyse des Émotions Faciales *****</h2>`;
+
+    if (emotionTimeline.length === 0) {
+        faceSection.innerHTML += `<p>Aucune donnée faciale détectée.</p><br>`;
+    } else {
+        const videoDurationSec = (emotionTimeline[emotionTimeline.length - 1].timestamp - emotionTimeline[0].timestamp) / 1000;
+        let emotionCounts = {};
+        let sentimentCounts = { Positive: 0, Neutral: 0, Negative: 0 };
+
+        let altEmotions = {};
+        let dominantEmotion = null;
+        let maxEmotionCount = 0;
+
+        emotionTimeline.forEach(entry => {
+            entry.detected_faces.forEach(face => {
+                // Emotion dominante
+                const topEmotion = Object.entries(face.emotions).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+                emotionCounts[topEmotion] = (emotionCounts[topEmotion] || 0) + 1;
+
+                // Sentiment dominant
+                const topSentiment = Object.entries(face.sentiments).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+                sentimentCounts[topSentiment] = (sentimentCounts[topSentiment] || 0) + 1;
+            });
+        });
+
+        // Déterminer émotion dominante
+        for (const [emo, count] of Object.entries(emotionCounts)) {
+            if (count > maxEmotionCount) {
+                maxEmotionCount = count;
+                dominantEmotion = emo;
+            }
+        }
+
+        //let faceSummary = `<p>Durant les ${Math.floor(videoDurationSec)} secondes analysées, plusieurs visages ont été détectés et évalués émotionnellement.</p>`;
+        let faceSummary = `<p>Durant les ${videoDurationSec} secondes analysées, plusieurs visages ont été détectés et évalués émotionnellement.</p>`;
+        if (dominantEmotion) {
+            faceSummary += `<p>L’émotion faciale dominante observée était <strong>${dominantEmotion.charAt(0).toUpperCase() + dominantEmotion.slice(1)}</strong>, détectée le plus fréquemment.</p>`;
+        } else {
+            faceSummary += `<p>Aucune émotion faciale dominante claire n'a émergé.</p>`;
+        }
+
+        if (Object.keys(emotionCounts).length > 1) {
+            faceSummary += `<p>D’autres émotions ont aussi été relevées :<ul>`;
+            for (const [emo, count] of Object.entries(emotionCounts)) {
+                if (emo !== dominantEmotion) {
+                    faceSummary += `<li>${emo.charAt(0).toUpperCase() + emo.slice(1)} : ${count} occurrences</li>`;
+                }
+            }
+            faceSummary += `</ul></p><br>`;
+        }
+
+        // Analyse des sentiments faciaux
+        const totalSentiments = sentimentCounts.Positive + sentimentCounts.Neutral + sentimentCounts.Negative;
+        if (totalSentiments > 0) {
+            faceSummary += `<p>Sentiment facial global : `;
+            const dominantSentiment = Object.entries(sentimentCounts).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+            faceSummary += `<strong>${dominantSentiment}</strong>.</p><br>`;
+            faceSummary += `<p>Répartition approximative :<br>`;
+            faceSummary += `&nbsp;&nbsp;• Positif : ${(sentimentCounts.Positive / totalSentiments * 100).toFixed(1)}%<br>`;
+            faceSummary += `&nbsp;&nbsp;• Neutre : ${(sentimentCounts.Neutral / totalSentiments * 100).toFixed(1)}%<br>`;
+            faceSummary += `&nbsp;&nbsp;• Négatif : ${(sentimentCounts.Negative / totalSentiments * 100).toFixed(1)}%</p>`;
+        } else {
+            faceSummary += `<p>Aucune donnée exploitable pour les sentiments visuels.</p>`;
+        }
+
+        faceSection.innerHTML += faceSummary;
+    }
+
+    summaryContainer.appendChild(faceSection);
+        // 😓 Partie 3 : Analyse du Stress
+    const stressSection = document.createElement("div");
+    stressSection.innerHTML = `<h2>***** Analyse du Stress *****</h2>`;
+
+    if (emotionTimeline.length === 0) {
+        stressSection.innerHTML += `<p>Aucune donnée faciale disponible pour estimer le stress.</p>`;
+    } else {
+        const emotionSums = {
+            angry: 0, disgust: 0, fear: 0, happy: 0, sad: 0, surprise: 0, neutral: 0
+        };
+        let totalFaces = 0;
+
+        // Accumuler les émotions
+        emotionTimeline.forEach(entry => {
+            entry.detected_faces.forEach(face => {
+                for (const [emo, score] of Object.entries(face.emotions)) {
+                    if (emotionSums.hasOwnProperty(emo)) {
+                        emotionSums[emo] += score;
+                    }
+                }
+                totalFaces++;
+            });
+        });
+
+        // Moyenne des émotions
+        const emotionAverages = {};
+        for (const emo in emotionSums) {
+            emotionAverages[emo] = totalFaces > 0 ? emotionSums[emo] / totalFaces : 0;
+        }
+
+        // Pondération des émotions liées au stress
+        const stressInfluence = {
+            angry: 1.0,
+            fear: 1.0,
+            sad: 0.8,
+            surprise: 0.6,
+            disgust: 0.4,
+            neutral: 0.0,
+            happy: -0.5
+        };
+
+        let rawStress = 0;
+        for (const emo in emotionAverages) {
+            rawStress += emotionAverages[emo] * (stressInfluence[emo] || 0);
+        }
+
+        let stressPercent = Math.max(0, Math.min(100, (rawStress * 100))); // clamp entre 0 et 100
+        stressPercent = stressPercent.toFixed(1);
+
+        stressSection.innerHTML += `<p>Niveau estimé de stress facial : <strong>${stressPercent}%</strong>.</p>`;
+
+        let stressFacial = parseFloat(stressPercent);
+        let stressTextuel = 0;
+
+        // Si analyse émotionnelle du texte disponible
+        if (lastTextEmotionResult && lastTextEmotionResult.raw_scores) {
+            const emotionScores = lastTextEmotionResult.raw_scores;
+            
+            const stressEmotionWeights = {
+                anger: 1.0,
+                fear: 1.0,
+                sadness: 0.8,
+                surprise: 0.6,
+                disgust: 0.4,
+                neutral: 0.0,
+                joy: -0.5,
+                happiness: -0.5
+            };
+
+            let weightedSum = 0;
+            for (const [emo, score] of Object.entries(emotionScores)) {
+                const weight = stressEmotionWeights[emo.toLowerCase()] || 0;
+                weightedSum += score * weight;
+            }
+
+            stressTextuel = Math.max(0, Math.min(1, weightedSum)); // clamp 0-1
+            stressTextuel = parseFloat((stressTextuel * 100).toFixed(1));
+        }
+
+        // Stress global combiné
+        const stressGlobal = parseFloat((0.6 * stressFacial + 0.4 * stressTextuel).toFixed(1));
+        // 👉 ENVOI AU SERVEUR
+        try {
+            const token = localStorage.getItem("authToken"); // ou autre méthode pour récupérer le token
+            await fetch('/stress_analysis/', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    stress_facial: stressFacial,
+                    stress_textuel: stressTextuel,
+                    stress_global: stressGlobal
+                })
+            });
+        } catch (error) {
+            console.error("Erreur lors de l'envoi des données de stress :", error);
+        }
+        stressSection.innerHTML += `<p><strong>Stress facial estimé :</strong> ${stressFacial}%</p>`;
+        stressSection.innerHTML += `<p><strong>Stress textuel estimé :</strong> ${stressTextuel}%</p>`;
+        stressSection.innerHTML += `<p><strong>Niveau de stress global (fusion texte + visage) :</strong> <span style="font-size:1.2em;color:#c0392b">${stressGlobal}%</span></p>`;
+
+        // Interprétation
+        let interpretation = "";
+        if (stressGlobal < 20) {
+            interpretation = "Excellent calme général. Aucune tension notable détectée.";
+        } else if (stressGlobal < 40) {
+            interpretation = "Niveau de stress faible. Bonne stabilité émotionnelle.";
+        } else if (stressGlobal < 60) {
+            interpretation = "Stress modéré. À surveiller selon le contexte.";
+        } else if (stressGlobal < 80) {
+            interpretation = "Stress élevé. Des signes visibles de tension émotionnelle.";
+        } else {
+            interpretation = "Stress critique. Charge émotionnelle très importante détectée.";
+        }
+
+        stressSection.innerHTML += `<p>${interpretation}</p>`;
+
+    }
+
+    summaryContainer.appendChild(stressSection);
+    // ✅ Envoi du contenu textuel accumulé (liveBuffer) à l’endpoint FastAPI
+    try {
+        const token = localStorage.getItem("authToken");
+        await fetch("/api/save-transcription", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                session_id: sessionId,
+                transcription: liveTextBuffer
+            })
+        });
+    } catch (error) {
+        console.error("Erreur lors de l'envoi de la transcription :", error);
+    }
+
+    
+
+    summaryContainer.classList.remove("hidden");
+}
+
+
+saveWebcamAnalysisButtonUpload.addEventListener('click', () => {
+    saveResults(currentAnalysisData, sessionId);
+});
+
 // Initialize with Upload tab active
 switchTab('uploadTab');
+
+// --- Variables globales pour les éléments HTML ---
+//let transcriptionTextElem, facialEmotionsSummaryElem, overallSentimentElem, rawSentimentScoresElem;
+//let audioEmotionSummary, rawAudioEmotionScores;
+//let resultsSummaryDiv;
+
+/*document.addEventListener('DOMContentLoaded', () => {
+    const uploadForm = document.getElementById('uploadForm');
+    const videoFile = document.getElementById('videoFile');
+    const analyzeButton = document.getElementById('analyzeButton');
+    const loadingMessage = document.getElementById('loadingMessage');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorText = document.getElementById('errorText');
+    resultsSummaryDiv = document.getElementById('resultsSummary');
+    transcriptionTextElem = document.getElementById('transcriptionText');
+    facialEmotionsSummaryElem = document.getElementById('facialEmotionsSummary');
+    overallSentimentElem = document.getElementById('overallSentiment');
+    rawSentimentScoresElem = document.getElementById('rawSentimentScores');
+    audioEmotionSummary = document.getElementById('audioEmotionSummary');
+    rawAudioEmotionScores = document.getElementById('rawAudioEmotionScores');
+    const uploadedVideoDisplayContainer = document.getElementById('uploadedVideoDisplayContainer');
+    const interviewVideo = document.getElementById('interviewVideo');
+    const analysisCanvas = document.getElementById('analysisCanvas');
+    const saveWebcamAnalysisButtonUpload = document.getElementById('saveWebcamAnalysisButtonUpload');
+
+    let currentAnalysisData = null;
+
+    uploadForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const file = videoFile.files[0];
+        if (!file) {
+            alert('Veuillez sélectionner un fichier vidéo.');
+            return;
+        }
+
+        loadingMessage.classList.remove('hidden');
+        errorMessage.classList.add('hidden');
+        resultsSummaryDiv.classList.add('hidden');
+        uploadedVideoDisplayContainer.classList.add('hidden');
+        saveWebcamAnalysisButtonUpload.disabled = true;
+
+        const formData = new FormData();
+        formData.append('video', file);
+
+        try {
+            const response = await fetch('/analyze-interview-video', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Erreur lors de l\'analyse vidéo.');
+            }
+
+            const data = await response.json();
+            currentAnalysisData = data;
+            saveWebcamAnalysisButtonUpload.disabled = false;
+
+            // --- Appel de la fonction d'affichage détaillé des résultats ---
+            displayResultsSummary(data);
+
+            // --- Affichage de la vidéo ---
+            const videoURL = URL.createObjectURL(file);
+            interviewVideo.src = videoURL;
+            uploadedVideoDisplayContainer.classList.remove('hidden');
+
+        } catch (error) {
+            loadingMessage.classList.add('hidden');
+            errorMessage.classList.remove('hidden');
+            errorText.textContent = error.message;
+        } finally {
+            loadingMessage.classList.add('hidden');
+        }
+    });
+});*/
